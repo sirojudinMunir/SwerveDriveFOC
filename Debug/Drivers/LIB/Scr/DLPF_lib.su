@@ -1,0 +1,2 @@
+../Drivers/LIB/Scr/DLPF_lib.c:12:6:dlpf_set_alpha	24	static
+../Drivers/LIB/Scr/DLPF_lib.c:19:8:dlpf_get_result	32	static

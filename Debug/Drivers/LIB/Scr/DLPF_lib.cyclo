@@ -1,0 +1,2 @@
+DLPF_lib.c:12:6:dlpf_set_alpha	1
+DLPF_lib.c:19:8:dlpf_get_result	1

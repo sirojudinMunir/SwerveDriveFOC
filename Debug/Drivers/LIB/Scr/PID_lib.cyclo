@@ -1,0 +1,7 @@
+PID_lib.c:23:6:PID_set_konstanta	1
+PID_lib.c:39:6:PID_set_max_value	1
+PID_lib.c:54:8:PID_calculate	6
+PID_lib.c:95:8:PI_calculate	5
+PID_lib.c:121:8:PD_calculate	3
+PID_lib.c:137:6:counting_time	1
+PID_lib.c:142:8:get_us	1

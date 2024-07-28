@@ -1,0 +1,4 @@
+FLASH_lib.c:12:6:FLASH_erase_sector	1
+FLASH_lib.c:21:6:FLASH_set_sector_addrs	1
+FLASH_lib.c:27:6:FLASH_write	8
+FLASH_lib.c:66:6:FLASH_read	8

@@ -1,0 +1,4 @@
+../Drivers/LIB/Scr/FLASH_lib.c:12:6:FLASH_erase_sector	8	static
+../Drivers/LIB/Scr/FLASH_lib.c:21:6:FLASH_set_sector_addrs	16	static
+../Drivers/LIB/Scr/FLASH_lib.c:27:6:FLASH_write	64	static
+../Drivers/LIB/Scr/FLASH_lib.c:66:6:FLASH_read	40	static

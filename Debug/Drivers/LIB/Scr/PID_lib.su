@@ -1,0 +1,7 @@
+../Drivers/LIB/Scr/PID_lib.c:23:6:PID_set_konstanta	40	static
+../Drivers/LIB/Scr/PID_lib.c:39:6:PID_set_max_value	32	static
+../Drivers/LIB/Scr/PID_lib.c:54:8:PID_calculate	80	static
+../Drivers/LIB/Scr/PID_lib.c:95:8:PI_calculate	64	static
+../Drivers/LIB/Scr/PID_lib.c:121:8:PD_calculate	48	static
+../Drivers/LIB/Scr/PID_lib.c:137:6:counting_time	4	static
+../Drivers/LIB/Scr/PID_lib.c:142:8:get_us	16	static
