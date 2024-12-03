@@ -18,6 +18,7 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+#include "cmsis_os.h"
 #include "usb_device.h"
 
 /* Private includes ----------------------------------------------------------*/
@@ -26,9 +27,12 @@
 #include "math.h"
 #include "stdio.h"
 #include "stdlib.h"
-#include "PID_lib.h"
-#include "DLPF_lib.h"
 #include "FLASH_lib.h"
+#include "SWERVE_DRIVE_BLDC.h"
+#include "SWERVE_DRIVE_CAN.h"
+#include "TASK_COMMAND.h"
+#include "TASK_BLINK.h"
+
 
 /* USER CODE END Includes */
 
@@ -40,10 +44,7 @@
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 
-#define MAX_SINE_WAVE 360
-#define DEG_2_RAD 	0.01745329251994
-#define RAD_2_DEG	57.2957795130823208
-#define WHEEL_1
+#define WHEEL_0
 
 /* USER CODE END PD */
 
@@ -74,84 +75,43 @@ TIM_HandleTypeDef htim5;
 TIM_HandleTypeDef htim7;
 TIM_HandleTypeDef htim8;
 
+/* Definitions for defaultTask */
+osThreadId_t defaultTaskHandle;
+const osThreadAttr_t defaultTask_attributes = {
+  .name = "defaultTask",
+  .stack_size = 128 * 4,
+  .priority = (osPriority_t) osPriorityNormal,
+};
 /* USER CODE BEGIN PV */
 
-enum swerve_register
-{
-	_SET_WHEEL			= 0xA0,
-	_SET_BEEP			= 0xA3,
-	_SET_ZERO_OFFSET 	= 0xB0,
-	_SET_PID_M1 		= 0xC1,
-	_SET_PID_M2 		= 0xC2,
-	_READ_ANGLE			= 0xD0,
-	_READ_HALL_SECTOR	= 0xD1,
-	_READ_RPM			= 0xD2
-};
-
-enum bldc_channel
-{
-	_BLDC1, _BLDC2
-};
-
-enum bldc_output
-{
-	_u, _v, _w
-};
 
 typedef enum
 {
 	_dq_test, _current_test, _torque_test, _speed_test, _angle_test
 }BLDC_TestTypedef;
 
-typedef struct
-{
-	uint8_t channel;
-	PID_HandleTypeDef hpid_id, hpid_iq, hpid_omega, hpid_theta;
-	DLPF_HandleTypeDef hdlpf_current_filt[3], hdlpf_cmps;
-	uint32_t adc_buff[3], spwm[3], t_pwm, c_loop, zero_det_t;
-	uint8_t hall_sector;
-	double sector_theta, last_sector_theta, new_sector_theta;
-	double theta, raw_current[3], id_result, iq_result,
-			p_shift,
-			ia, ib, ic, max_current,
-			rpm_abs, rpm, cmps,
-			angle_estimation, last_angle_estimation;
-	int8_t dir, last_dir;
-	_Bool state;
-}BLDC_HandleTypeDef;
-
-CAN_TxHeaderTypeDef   	TxHeader;
-CAN_RxHeaderTypeDef   	RxHeader;
-BLDC_HandleTypeDef hbldc1, hbldc2;
 DLPF_HandleTypeDef i_test[3], battery_read;
+USB_settingTypedef usb_setting;
 
-uint32_t flash_data_buff[2];
-uint32_t TxMailbox, cnt = 0, t_test, t_delay = 1000, cnt_ovf = 0,
+uint32_t cnt = 0, t_test, t_delay = 1000, cnt_ovf = 0,
 		mag_zero_cal_t,
-		led_blink_time, led_blink_delay, usb_tx_t,
 		adc_battery;
 uint16_t encd_data_rx;
-uint8_t spi_rx[2], usb_tx_buff[100], can_rx_buff[8], can_tx_buff[8],
-		led_can_respone = 0, led_blink_count = 0;
-int16_t hall_sens_count = 0;
-float raw_angle, last_raw_angle, m2_angle = 0, angle_sector, hrpm,
-		z_lift = 0, z_offset = 0, z_cm = 0,
+uint8_t spi_rx[2];
+float raw_angle, last_raw_angle, m2_angle = 0, hrpm,
 		a = 0, b = 0, cm_test = 0, sector_test = 0, rpm_trsh = 25;
 
-double angle_sens, raw_angle_ovf, steer_angle_offset = 0, zero_offset = 0,
-		mag_angle_offset;
+double  steer_angle_offset = 0;
 
 _Bool error_flag, read_ready = 0, flag = 0, wheel_state = 0, update_rpm_flag = 0,
 		mag_zero_set_flag = 0, mag_cal_mode = 0,
-		led_blink_flag = 1, steer_call_ready = 0, null_rpm = 0,
+		steer_call_ready = 0, null_rpm = 0,
 		lifter_ok_flag = 0;
 
-int32_t count_hall;
-uint16_t wheel_addr;
-float data_angle = 0, data_rpm = 0;
-double x_kp, x_ki, x_kd;
-_Bool next_change_param = 0, ctrl_h= 0, start_checking_mosfet = 0, bldc2_start_calibrate = 0;
+int32_t count_hall, raw_angle_ovf = 0, usb_tx_lenght;
+_Bool ctrl_h= 0, bldc2_start_calibrate = 0;
 
+uint8_t cmd_test = 0;
 
 /* USER CODE END PV */
 
@@ -171,6 +131,8 @@ static void MX_TIM2_Init(void);
 static void MX_TIM7_Init(void);
 static void MX_TIM3_Init(void);
 static void MX_TIM4_Init(void);
+void StartDefaultTask(void *argument);
+
 /* USER CODE BEGIN PFP */
 extern uint8_t CDC_Transmit_FS(uint8_t* Buf, uint16_t Len);
 /* USER CODE END PFP */
@@ -179,220 +141,6 @@ extern uint8_t CDC_Transmit_FS(uint8_t* Buf, uint16_t Len);
 /* USER CODE BEGIN 0 */
 
 //==========================================================================================
-
-/*
- * @brief	CAN_filter_config
- * 			fungsi untuk konfigurasi filter pada CAN
- * @param	None
- * @retval	None
- */
-void CAN_filter_config (void)
-{
-	CAN_FilterTypeDef canfilterconfig;
-
-	canfilterconfig.FilterActivation = CAN_FILTER_ENABLE;
-	canfilterconfig.FilterBank = 18;
-	canfilterconfig.FilterFIFOAssignment = CAN_FILTER_FIFO0;
-	canfilterconfig.FilterIdHigh = wheel_addr<<5;
-	canfilterconfig.FilterIdLow = 0x0000;
-	canfilterconfig.FilterMaskIdHigh = wheel_addr<<5;
-	canfilterconfig.FilterMaskIdLow = 0x0000;
-	canfilterconfig.FilterMode = CAN_FILTERMODE_IDMASK;
-	canfilterconfig.FilterScale = CAN_FILTERSCALE_32BIT;
-	canfilterconfig.SlaveStartFilterBank = 0;
-
-	HAL_CAN_ConfigFilter(&hcan1, &canfilterconfig);
-}
-
-/*
- * @brief	CAN_get_wheel
- * 			fungsi ini digunakan untuk mendapatkan nilai kecepatan dan sudut roda dari
- * 			perangkat lain melalui CAN bus
- * @param	None
- * @retval	None
- */
-void CAN_get_wheel (void)
-{
-	int16_t data_rx[2];
-	float angle_temp, rpm_temp, angle_diff;
-
-	/* menerima data */
-	data_rx[0] = (int16_t)(can_rx_buff[1] | can_rx_buff[2]<<8);
-	data_rx[1] = (int16_t)(can_rx_buff[3] | can_rx_buff[4]<<8);
-	angle_temp = (float)data_rx[0] / 10.0;
-	rpm_temp = (float)data_rx[1] / 10.0;
-
-	/* optimalisasi gerakan */
-	while ((angle_sens - angle_temp) > 180)
-	{
-		angle_temp += 360;
-	}
-	while ((angle_sens - angle_temp) < -180)
-	{
-		angle_temp -=360;
-	}
-	angle_diff = angle_sens - angle_temp;
-	if (fabs(angle_diff) > 90)
-	{
-		if (angle_diff > 0) data_angle = angle_temp + 180.00;
-		else data_angle = angle_temp - 180.00;
-		data_rpm = -rpm_temp;
-	}
-	else
-	{
-		data_angle = angle_temp;
-		data_rpm = rpm_temp;
-	}
-}
-
-void optimalisasi_gerakan (double angle_temp, double rpm_temp)
-{
-	double angle_diff;
-	/* optimalisasi gerakan */
-	while ((angle_sens - angle_temp) > 180)
-	{
-		angle_temp += 360;
-	}
-	while ((angle_sens - angle_temp) < -180)
-	{
-		angle_temp -=360;
-	}
-	angle_diff = angle_sens - angle_temp;
-	if (fabs(angle_diff) > 90)
-	{
-		if (angle_diff > 0) data_angle = angle_temp + 180.00;
-		else data_angle = angle_temp - 180.00;
-		data_rpm = -rpm_temp;
-	}
-	else
-	{
-		data_angle = angle_temp;
-		data_rpm = rpm_temp;
-	}
-}
-
-/*
- * @brief	CAN_get_zero_offset
- * 			fungsi ini digunakan untuk mendapatkan nilai offset sudut roda dari
- * 			perangkat lain melalui CAN bus
- * @param	None
- * @retval	None
- */
-void CAN_get_zero_offset (void)
-{
-	int16_t offset_temp;
-
-	offset_temp = (int16_t)(can_rx_buff[1] | can_rx_buff[2]<<8);
-	zero_offset = (float)offset_temp;
-}
-
-/*
- * @brief	CAN_send_wheel
- * 			fungsi ini digunakan untuk mengirim sudut roda dan perubahan pulse hall sensor
- * 			ke perangkat lain melalui CAN bus
- * @param	addr		alamat penerima
- * 			angle 		sudut roda saat ini
- * 			hall_cnt	perubahan pulse hall sensor roda
- * @retval	None
- */
-void CAN_send_wheel (uint32_t addr, float angle, int16_t hall_cnt)
-{
-	int16_t angle_temp;
-
-	while (angle < 0)
-	{
-		angle += 360.0;
-	}
-	while (angle > 360)
-	{
-		angle -= 360.0;
-	}
-	angle_temp = angle * 10.0;
-
-	TxHeader.DLC = 5;
-	TxHeader.StdId = addr;
-	can_tx_buff[0] = _SET_WHEEL;
-	can_tx_buff[1] = angle_temp & 0xFF;
-	can_tx_buff[2] = (angle_temp >> 8) & 0xFF;
-	can_tx_buff[3] = hall_cnt & 0xFF;
-	can_tx_buff[4] = (hall_cnt >> 8) & 0xFF;
-
-	HAL_CAN_AddTxMessage(&hcan1, &TxHeader, can_tx_buff, &TxMailbox);
-}
-
-/*
- * @brief	CAN_send_ok
- * 			fungsi ini digunakan mengirim respon ke perangkat lain melalui CAN bus
- * @param	addr	alamat penerima
- * @retval	None
- */
-void CAN_send_ok (uint32_t addr)
-{
-	TxHeader.DLC = 2;
-	TxHeader.StdId = addr;
-	can_tx_buff[0] = (uint8_t)'O';
-	can_tx_buff[1] = (uint8_t)'K';
-
-	HAL_CAN_AddTxMessage(&hcan1, &TxHeader, can_tx_buff, &TxMailbox);
-}
-
-//==========================================================================================
-
-/*
- * @brief	blink_respone
- * 			indikator LED jika perangkat menerima data yang sesuai
- * @param	None
- * @retval	None
- */
-void blink_respone (void)
-{
-	if (led_can_respone != 0)
-	{
-		if (led_blink_flag)
-		{
-			led_blink_flag = 0;
-			led_blink_time = HAL_GetTick();
-			switch (led_can_respone)
-			{
-			case _SET_WHEEL:
-				led_blink_delay = 30;
-				led_blink_count = 2;
-				break;
-			case _SET_ZERO_OFFSET:
-				led_blink_delay = 100;
-				led_blink_count = 4;
-				break;
-			case _SET_PID_M1:
-				led_blink_delay = 150;
-				led_blink_count = 6;
-				break;
-			case _SET_PID_M2:
-				led_blink_delay = 150;
-				led_blink_count = 6;
-				break;
-			}
-		}
-		if (HAL_GetTick() - led_blink_time >= led_blink_delay)
-		{
-			led_blink_time = HAL_GetTick();
-			if (led_blink_count > 0)
-			{
-				if (led_blink_count % 2 == 0)
-					LED_BUILTIN_GPIO_Port->BSRR = LED_BUILTIN_Pin<<16;
-				else
-					LED_BUILTIN_GPIO_Port->BSRR = LED_BUILTIN_Pin;
-				led_blink_count--;
-			}
-			else
-			{
-				led_can_respone = 0;
-				led_blink_flag = 1;
-			}
-		}
-	}
-}
-
-//============================================================================================
 
 /*
  * @brief	AS5048A_send_data
@@ -412,8 +160,6 @@ HAL_StatusTypeDef AS5048A_send_data (_Bool par, _Bool rw, uint16_t addr)
 	status = HAL_SPI_TransmitReceive_DMA (&hspi1, data, spi_rx, 2);
 	return status;
 }
-
-//============================================================================================
 
 /*
  * @brief	battery_read_init
@@ -444,1250 +190,6 @@ double read_battery (void)
 
 //============================================================================================
 
-void BLDC_init (BLDC_HandleTypeDef *hbldc)
-{
-	hbldc->p_shift = 90;
-	if (hbldc->channel == _BLDC1)
-	{
-		dlpf_set_alpha(&hbldc->hdlpf_current_filt[_u], 0.9998);//0.9998
-		dlpf_set_alpha(&hbldc->hdlpf_current_filt[_v], 0.9998);
-		dlpf_set_alpha(&hbldc->hdlpf_current_filt[_w], 0.9998);
-		dlpf_set_alpha(&hbldc->hdlpf_cmps, 0.002);
-		PID_set_konstanta(&hbldc->hpid_id, 0.02, 0.0001, 0);//0.02, 0.0001, 0
-		PID_set_max_value(&hbldc->hpid_id, 4.0, 40000.0);//4 4000
-		PID_set_konstanta(&hbldc->hpid_iq, 0.02, 0.0002, 0);//0.02, 0.0005, 0
-		PID_set_max_value(&hbldc->hpid_iq, 4.0, 20000.0);
-		PID_set_konstanta(&hbldc->hpid_omega, 0.002, 0.0000001, 0);//0.002, 0.0000001, 0
-		PID_set_max_value(&hbldc->hpid_omega, 4.0, 40000000);
-		//M1+KI0.00000001
-
-		HAL_TIMEx_HallSensor_Start_IT (&htim5);
-		HAL_TIM_PWM_Start(&htim8, TIM_CHANNEL_1);
-		HAL_TIM_PWM_Start(&htim8, TIM_CHANNEL_2);
-		HAL_TIM_PWM_Start(&htim8, TIM_CHANNEL_3);
-		HAL_TIM_PWM_Start(&htim8, TIM_CHANNEL_4);
-		HAL_ADCEx_InjectedStart_IT(&hadc2);
-		M2_EN_U_GPIO_Port->BSRR = M2_EN_U_Pin;
-		M2_EN_V_GPIO_Port->BSRR = M2_EN_V_Pin;
-		M2_EN_W_GPIO_Port->BSRR = M2_EN_W_Pin;
-	}
-	else if (hbldc->channel == _BLDC2)
-	{
-
-#ifdef WHEEL_Z
-		dlpf_set_alpha(&hbldc->hdlpf_current_filt[_u], 0.95);
-		dlpf_set_alpha(&hbldc->hdlpf_current_filt[_v], 0.95);
-		dlpf_set_alpha(&hbldc->hdlpf_current_filt[_w], 0.95);
-		PID_set_konstanta(&hbldc->hpid_id, 0.0005, 0.000005, 0);//0.00005
-		PID_set_max_value(&hbldc->hpid_id, 3.0, 400000);
-		PID_set_konstanta(&hbldc->hpid_iq, 0.0005, 0.000005, 0);//0.00004
-		PID_set_max_value(&hbldc->hpid_iq, 3.0, 400000);
-		PID_set_konstanta(&hbldc->hpid_theta, 25, 0, 1.2);
-		PID_set_max_value(&hbldc->hpid_theta, 3.0, 0);
-#else
-		dlpf_set_alpha(&hbldc->hdlpf_current_filt[_u], 0.99998);//0.99925
-		dlpf_set_alpha(&hbldc->hdlpf_current_filt[_v], 0.99998);
-		dlpf_set_alpha(&hbldc->hdlpf_current_filt[_w], 0.99998);
-		PID_set_konstanta(&hbldc->hpid_id, 0.001, 0.00002, 0);//0.001, 0.000025, 0
-		PID_set_max_value(&hbldc->hpid_id, 3.8, 200000);
-		PID_set_konstanta(&hbldc->hpid_iq, 0.001, 0.00004, 0);//0.001, 0.00002, 0
-		PID_set_max_value(&hbldc->hpid_iq, 3.8, 100000);
-		PID_set_konstanta(&hbldc->hpid_theta, 1.2, 0, 0.0001);//1.2, 0, 0.007
-		PID_set_max_value(&hbldc->hpid_theta, 9.0, 0);
-#endif
-
-		HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
-		HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_2);
-		HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_3);
-		HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_4);
-		HAL_ADCEx_InjectedStart_IT(&hadc3);
-		M1_EN_U_GPIO_Port->BSRR = M1_EN_U_Pin;
-		M1_EN_V_GPIO_Port->BSRR = M1_EN_V_Pin;
-		M1_EN_W_GPIO_Port->BSRR = M1_EN_W_Pin;
-	}
-	dlpf_set_alpha(&i_test[0], 0.01);
-	dlpf_set_alpha(&i_test[1], 0.01);
-	dlpf_set_alpha(&i_test[2], 0.01);
-}
-
-//============================================================================================
-
-void BLDC_get_current_test (BLDC_HandleTypeDef *hbldc)
-{
-	hbldc->raw_current[_u] = (double)hbldc->adc_buff[0]*0.002014652014652;//0.002014652014652
-	hbldc->raw_current[_v] = (double)hbldc->adc_buff[1]*0.002014652014652;
-	hbldc->raw_current[_w] = (double)hbldc->adc_buff[2]*0.002014652014652;
-	dlpf_get_result (&hbldc->hdlpf_current_filt[_u], hbldc->raw_current[_u]);
-	dlpf_get_result (&hbldc->hdlpf_current_filt[_v], hbldc->raw_current[_v]);
-	dlpf_get_result (&hbldc->hdlpf_current_filt[_w], hbldc->raw_current[_w]);
-}
-
-void BLDC_get_current (BLDC_HandleTypeDef *hbldc)
-{
-	float iu, iv, iw;
-	uint32_t current_pwm[3];
-
-	if (hbldc->channel == _BLDC1)
-	{
-		current_pwm[_u] = TIM8->CCR1;
-		current_pwm[_v] = TIM8->CCR2;
-		current_pwm[_w] = TIM8->CCR3;
-	}
-	else if (hbldc->channel == _BLDC2)
-	{
-		current_pwm[_u] = TIM1->CCR1;
-		current_pwm[_v] = TIM1->CCR2;
-		current_pwm[_w] = TIM1->CCR3;
-	}
-	iu = (double)hbldc->adc_buff[0]*0.0040293040293;
-	iv = (double)hbldc->adc_buff[1]*0.0040293040293;
-	iw = (double)hbldc->adc_buff[2]*0.0040293040293;
-
-	if (current_pwm[_u] == hbldc->t_pwm)
-	{
-		hbldc->raw_current[_u] = iv+iw;
-		hbldc->raw_current[_v] = -iv;
-		hbldc->raw_current[_w] = -iw;
-	}
-	else if (current_pwm[_v] == hbldc->t_pwm)
-	{
-		hbldc->raw_current[_u] = -iu;
-		hbldc->raw_current[_v] = iu+iw;
-		hbldc->raw_current[_w] = -iw;
-	}
-	else if (current_pwm[_w] == hbldc->t_pwm)
-	{
-		hbldc->raw_current[_u] = -iu;
-		hbldc->raw_current[_v] = -iv;
-		hbldc->raw_current[_w] = iu+iv;
-	}
-}
-
-void BLDC_get_current_filter (BLDC_HandleTypeDef *hbldc)
-{
-	dlpf_get_result (&hbldc->hdlpf_current_filt[_u], hbldc->raw_current[_u]);
-	dlpf_get_result (&hbldc->hdlpf_current_filt[_v], hbldc->raw_current[_v]);
-	dlpf_get_result (&hbldc->hdlpf_current_filt[_w], hbldc->raw_current[_w]);
-}
-
-//============================================================================================
-
-void BLDC_clark_park_trans (BLDC_HandleTypeDef *hbldc, float deg, float ia, float ib, float ic)
-{
-	float alpha, beta;
-	deg *= DEG_2_RAD;
-
-	alpha = ia - 0.5 * (ib + ic);
-	beta = 0.8660254037844386 * (ib - ic);
-
-	hbldc->id_result = cos (deg) * alpha + sin (deg) * beta;
-	hbldc->iq_result = cos (deg) * beta - sin (deg) * alpha;
-}
-
-//============================================================================================
-
-void BLDC_inv_clark_park_trans (BLDC_HandleTypeDef *hbldc, float deg, float d, float q)
-{
-	float alpha, beta;
-	deg *= DEG_2_RAD;
-
-	alpha = d * cos (deg) - q * sin (deg);
-	beta = d * sin (deg) + q * cos (deg);
-	hbldc->ia = alpha;
-	hbldc->ib = -0.5 * alpha + 0.8660254037844386 * beta;
-	hbldc->ic = -0.5 * alpha - 0.8660254037844386 * beta;
-}
-
-
-//============================================================================================
-
-void BLDC_spwm (BLDC_HandleTypeDef *hbldc)
-{
-	uint32_t pwm_h_temp = 0;
-
-	hbldc->spwm[_u] = (hbldc->ia * 500.0)+2047.0;
-	hbldc->spwm[_v] = (hbldc->ib * 500.0)+2047.0;
-	hbldc->spwm[_w] = (hbldc->ic * 500.0)+2047.0;
-	if (hbldc->spwm[_u] > 4000) hbldc->spwm[_u] = 4000;
-	if (hbldc->spwm[_v] > 4000) hbldc->spwm[_v] = 4000;
-	if (hbldc->spwm[_w] > 4000) hbldc->spwm[_w] = 4000;
-	for (uint8_t i = 0; i < 3; i++)
-	{
-		if (pwm_h_temp < hbldc->spwm[i]) pwm_h_temp = hbldc->spwm[i];
-	}
-	hbldc->t_pwm = pwm_h_temp;
-
-	if (hbldc->channel == _BLDC1)
-	{
-		TIM8->CCR1 = hbldc->spwm[_u];
-		TIM8->CCR2 = hbldc->spwm[_v];
-		TIM8->CCR3 = hbldc->spwm[_w];
-		TIM8->CCR4 = 4000;
-	}
-	else if (hbldc->channel == _BLDC2)
-	{
-		TIM1->CCR1 = hbldc->spwm[_u];
-		TIM1->CCR2 = hbldc->spwm[_v];
-		TIM1->CCR3 = hbldc->spwm[_w];
-		TIM1->CCR4 = 4000;
-	}
-}
-
-void BLDC_beep (BLDC_HandleTypeDef *hbldc, uint32_t freq, uint32_t time_delay)
-{
-	uint32_t prescaller;
-	if (freq != 0)
-	{
-		if (freq < 100) freq = 100;
-		else if (freq > 20000) freq = 20000;
-		if (hbldc->channel == _BLDC1)
-		{
-			prescaller = 168000000 / (freq * 4095);
-			TIM8->PSC = prescaller;
-		}
-		else
-		{
-			prescaller = 168000000 / (freq * 4095);
-			TIM1->PSC = prescaller;
-		}
-		BLDC_inv_clark_park_trans (hbldc, 0, 0, 0.5);
-		BLDC_spwm (hbldc);
-	}
-	else
-	{
-		BLDC_inv_clark_park_trans (hbldc, 0, 0, 0);
-		BLDC_spwm (hbldc);
-	}
-	HAL_Delay(time_delay);
-	BLDC_inv_clark_park_trans (hbldc, 0, 0, 0);
-	BLDC_spwm (hbldc);
-	if (hbldc->channel == _BLDC1) TIM8->PSC = 1;
-	else TIM1->PSC = 1;
-}
-
-void BLDC_current_control (BLDC_HandleTypeDef *hbldc, double id, double iq, double theta)
-{
-	BLDC_get_current(hbldc);
-	BLDC_clark_park_trans(hbldc, theta,
-			hbldc->hdlpf_current_filt[_u].result,
-			hbldc->hdlpf_current_filt[_v].result,
-			hbldc->hdlpf_current_filt[_w].result);
-	PID_calculate(&hbldc->hpid_id, id, hbldc->id_result);
-	PID_calculate(&hbldc->hpid_iq, iq, hbldc->iq_result);
-	BLDC_inv_clark_park_trans(hbldc, theta, hbldc->hpid_id.mv, hbldc->hpid_iq.mv);
-	BLDC_spwm(hbldc);
-}
-
-//============================================================================================
-
-void BLDC_get_sector (BLDC_HandleTypeDef *hbldc)
-{
-	uint8_t raw_hall_data;
-//	raw_hall_data = ((GPIOA->IDR & GPIO_PIN_15)>>15) | ((GPIOB->IDR & GPIO_PIN_3)>>2) | ((GPIOB->IDR & GPIO_PIN_10)>>8);
-	raw_hall_data = GPIOA->IDR & 0x07;
-	switch (raw_hall_data)
-	{
-	case 1:
-		if (hbldc->sector_theta == 120) 	 hbldc->dir = 1;
-		else if (hbldc->sector_theta == 240) hbldc->dir = -1;
-		else hbldc->dir = 0;
-		hbldc->sector_theta = 180;
-	break;
-	case 5:
-		if (hbldc->sector_theta == 60) 	 	 hbldc->dir = 1;
-		else if (hbldc->sector_theta == 180) hbldc->dir = -1;
-		else hbldc->dir = 0;
-		hbldc->sector_theta = 120;
-	break;
-	case 4:
-		if (hbldc->sector_theta == 0) 	 	 hbldc->dir = 1;
-		else if (hbldc->sector_theta == 120) hbldc->dir = -1;
-		else hbldc->dir = 0;
-		hbldc->sector_theta = 60;
-	break;
-	case 6:
-		if (hbldc->sector_theta == 300) 	 hbldc->dir = 1;
-		else if (hbldc->sector_theta == 60)  hbldc->dir = -1;
-		else hbldc->dir = 0;
-		hbldc->sector_theta = 0;
-	break;
-	case 2:
-		if (hbldc->sector_theta == 240) 	 hbldc->dir = 1;
-		else if (hbldc->sector_theta == 0) 	 hbldc->dir = -1;
-		else hbldc->dir = 0;
-		hbldc->sector_theta = 300;
-	break;
-	case 3:
-		if (hbldc->sector_theta == 180) 	 hbldc->dir = 1;
-		else if (hbldc->sector_theta == 300) hbldc->dir = -1;
-		else hbldc->dir = 0;
-		hbldc->sector_theta = 240;
-	break;
-	}
-}
-
-void BLDC_rpm_sens (BLDC_HandleTypeDef *hbldc)
-{
-	if (hbldc->dir == 1)
-	{
-		hbldc->rpm = hbldc->rpm_abs;
-		hall_sens_count++;
-	}
-	else if (hbldc->dir == -1)
-	{
-		hbldc->rpm = -hbldc->rpm_abs;
-		hall_sens_count--;
-	}
-}
-
-//============================================================================================
-
-void BLDC_get_rpm (BLDC_HandleTypeDef *hbldc)
-{
-	if (hbldc->channel == _BLDC1)
-	{
-		hbldc->rpm_abs = 60.0 / ((float)TIM5->CCR1 * 0.00012);
-	}
-	else if (hbldc->channel == _BLDC2)
-	{
-		//----------------------
-	}
-}
-
-//============================================================================================
-
-void BLDC_set_speed (double rpm)
-{
-	float phase_shft = 90, id_sp = 0;
-	double  t_hall = 0, rpm_abs = fabs(rpm);
-	uint32_t tcnt = TIM5->CNT;
-
-	if (hbldc1.rpm != 0) t_hall = (60.0/hbldc1.rpm)/60.0 * 2000000.0;//2000000.0
-	if (tcnt < fabs(t_hall))
-	{
-		hbldc1.angle_estimation = (double)tcnt / t_hall * 60.0;
-//		hbldc1.new_sector_theta = hbldc1.sector_theta + hbldc1.angle_estimation;
-		hbldc1.new_sector_theta = hbldc1.sector_theta;
-	}
-	else
-	{
-//		hbldc1.rpm = 0;
-		hbldc1.new_sector_theta = hbldc1.sector_theta;
-	}
-	if (rpm_abs < 0.001)
-	{
-		if (tcnt > fabs(t_hall))
-		{
-			hbldc1.rpm = 0;
-		}
-		PID_set_konstanta(&hbldc1.hpid_omega, 0.0002, 0.00000002, 0);
-		PID_set_max_value(&hbldc1.hpid_omega, 6.0, 100000000);
-		hbldc1.hpid_omega.int_error = 0;
-	}
-	else
-	{
-		if (tcnt > (fabs(t_hall) + 10))//100000
-		{
-			hbldc1.rpm = 0;
-		}
-		if (rpm_abs <= 100) PID_set_konstanta(&hbldc1.hpid_omega, 0.005, 0.0000001, 0);
-		else if (rpm_abs > 100 && rpm_abs <= 200) PID_set_konstanta(&hbldc1.hpid_omega, 0.01, 0.0000001, 0);
-		else if (rpm_abs > 200 && rpm_abs <= 300) PID_set_konstanta(&hbldc1.hpid_omega, 0.01, 0.0000001, 0);
-		else if (rpm_abs > 300 && rpm_abs <= 400) PID_set_konstanta(&hbldc1.hpid_omega, 0.015, 0.0000001, 0);
-		else if (rpm_abs > 400 && rpm_abs <= 500) PID_set_konstanta(&hbldc1.hpid_omega, 0.02, 0.0000001, 0);
-		else
-		{
-			PID_set_konstanta(&hbldc1.hpid_omega, 0.02, 0.0000001, 0);
-//			id_sp = -2.0;
-		}
-		PID_set_max_value(&hbldc1.hpid_omega, 6.0, 60000000);
-	}
-
-	hbldc1.c_loop++;
-	if (hbldc1.c_loop >= 2)
-	{
-		hbldc1.c_loop = 0;
-		PID_calculate(&hbldc1.hpid_omega, rpm, hbldc1.rpm);
-	}
-	if (hbldc1.hpid_omega.mv < 0) phase_shft = -90;
-	BLDC_get_current_filter(&hbldc1);
-	BLDC_clark_park_trans(&hbldc1, hbldc1.new_sector_theta+phase_shft,
-		  hbldc1.hdlpf_current_filt[_u].result,
-		  hbldc1.hdlpf_current_filt[_v].result,
-		  hbldc1.hdlpf_current_filt[_w].result);
-	PID_calculate(&hbldc1.hpid_id, id_sp, hbldc1.id_result);
-	PID_calculate(&hbldc1.hpid_iq, fabs(hbldc1.hpid_omega.mv), hbldc1.iq_result);
-	BLDC_inv_clark_park_trans(&hbldc1, hbldc1.new_sector_theta+phase_shft, hbldc1.hpid_id.mv, hbldc1.hpid_iq.mv);
-	BLDC_spwm(&hbldc1);
-}
-
-void BLDC_set_angle (float deg)
-{
-	float phase_shift = -90;
-	hbldc2.c_loop++;
-	if (hbldc2.c_loop >= 10)
-	{
-		hbldc2.c_loop = 0;
-		PID_calculate(&hbldc2.hpid_theta, deg, angle_sens);
-	}
-//	if (hbldc2.hpid_theta.mv < 0) phase_shift = 90.0;
-	angle_sector = (raw_angle+mag_angle_offset) * 11.0;
-	BLDC_get_current_filter(&hbldc2);
-	BLDC_clark_park_trans(&hbldc2, angle_sector+phase_shift,
-		  hbldc2.hdlpf_current_filt[_u].result,
-		  hbldc2.hdlpf_current_filt[_v].result,
-		  hbldc2.hdlpf_current_filt[_w].result);
-	PID_calculate(&hbldc2.hpid_id, 0, hbldc2.id_result);
-	PID_calculate(&hbldc2.hpid_iq, (hbldc2.hpid_theta.mv), hbldc2.iq_result);
-	BLDC_inv_clark_park_trans(&hbldc2, angle_sector+phase_shift, hbldc2.hpid_id.mv, hbldc2.hpid_iq.mv);
-	BLDC_spwm(&hbldc2);
-}
-
-/******************************************************************************************************/
-uint32_t step = 0;
-void BLDC_set_z (float z)
-{
-	float phase_shift = -90;
-	hbldc2.c_loop++;
-	if (hbldc2.c_loop >= 10)
-	{
-		hbldc2.c_loop = 0;
-		PID_calculate(&hbldc2.hpid_theta, z, z_lift);
-	}
-	angle_sector = (raw_angle+mag_angle_offset) * 7.0;
-	BLDC_get_current_filter(&hbldc2);
-	BLDC_clark_park_trans(&hbldc2, angle_sector-phase_shift,
-		  hbldc2.hdlpf_current_filt[_u].result,
-		  hbldc2.hdlpf_current_filt[_v].result,
-		  hbldc2.hdlpf_current_filt[_w].result);
-	PID_calculate(&hbldc2.hpid_id, 0, hbldc2.id_result);
-	PID_calculate(&hbldc2.hpid_iq, hbldc2.hpid_theta.mv, hbldc2.iq_result);
-	BLDC_inv_clark_park_trans(&hbldc2, angle_sector-phase_shift, hbldc2.hpid_id.mv, hbldc2.hpid_iq.mv);
-	BLDC_spwm(&hbldc2);
-}
-
-void lifter_goto_zero ()
-{
-	uint32_t z_timer = HAL_GetTick();
-	float z = z_lift;
-	while (HAL_GPIO_ReadPin(Z_LIMIT_GPIO_Port, Z_LIMIT_Pin))
-	{
-		if (HAL_GetTick() - z_timer >= 1)
-		{
-			z_timer = HAL_GetTick();
-			z-=0.01;
-		}
-		BLDC_set_z (z);
-	}
-	z_offset = z_lift;
-	BLDC_set_z (0);
-}
-
-void CAN_get_z (void)
-{
-	int16_t z_temp;
-
-	z_temp = (int16_t)(can_rx_buff[1] | can_rx_buff[2]<<8);
-	z_cm = (float)z_temp / 10.0;
-}
-
-void CAN_send_z (uint32_t addr, float z)
-{
-	int16_t z_temp = z * 10.0;
-	TxHeader.DLC = 3;
-	TxHeader.StdId = addr;
-	can_tx_buff[0] = 0x12;
-	can_tx_buff[1] = (uint8_t)(z_temp && 0xff);
-	can_tx_buff[2] = (uint8_t)(z_temp>>8 && 0xff);
-
-	HAL_CAN_AddTxMessage(&hcan1, &TxHeader, can_tx_buff, &TxMailbox);
-}
-
-/******************************************************************************************************/
-
-//pengujian1:
-void BLDC_calibrate ()
-{
-	uint32_t a_t, a_test = 0;
-	float a_sp = 0;
-	HAL_Delay(5000);
-	while (1)
-	{
-		if (HAL_GetTick() - a_t >= 1000)
-		{
-			a_t = HAL_GetTick();
-			a_test++;
-			if (a_test > 4) a_test = 0;
-			switch (a_test)
-			{
-			case 0: a_sp = 0; break;
-			case 1: a_sp = 90; break;
-			case 2: a_sp = -45; break;
-			case 3: a_sp = 45; break;
-			case 4: a_sp = -10; break;
-			}
-		}
-		BLDC_set_angle (a_sp);
-		if (HAL_GetTick() != usb_tx_t)
-		{
-		  usb_tx_t = HAL_GetTick();
-//		  uint32_t ln = sprintf ((char*)usb_tx_buff, "%.3f %.3f %.3f\n",
-//				  hbldc2.hdlpf_current_filt[_u].result*1000,
-//				  hbldc2.hdlpf_current_filt[_v].result*1000,
-//				  hbldc2.hdlpf_current_filt[_w].result*1000
-//				  );
-		  uint32_t ln = sprintf ((char*)usb_tx_buff, "%.3f %.3f\n",
-				  a_sp,angle_sens
-//				  hbldc2.id_result*1000, hbldc2.iq_result*1000
-				  );
-		  CDC_Transmit_FS (usb_tx_buff, ln);
-		  ////
-		}
-	}
-}
-
-void zero_mosfet ();
-
-void BLDC2_zero_cal ()
-{
-	zero_mosfet ();
-	uint32_t time = HAL_GetTick();
-	while (HAL_GetTick() - time < 1000)
-	{
-		BLDC_inv_clark_park_trans(&hbldc2, 0, 0, 0.4);
-		BLDC_spwm(&hbldc2);
-		mag_angle_offset = raw_angle;
-	}
-	zero_mosfet ();
-	flash_data_buff[0] = (int32_t)(mag_angle_offset*100000);
-	FLASH_write(0, flash_data_buff, 2, DATA_TYPE_32);
-
-	uint32_t ln = sprintf ((char*)usb_tx_buff,
-			"motor calibration successful\nplease reset the device!\n");
-	CDC_Transmit_FS (usb_tx_buff, ln);
-	while (1) ;
-}
-
-double str2float (char *str, uint8_t ln)
-{
-	double result;
-	double num[2]={0, 0}, num2_dev = 10;
-	uint8_t start_num2;
-	_Bool coma_det = 0;
-	for (uint8_t i = 0; i < ln; i++)
-	{
-		if (!coma_det)
-		{
-			if (str[i] >= '0' && str[i] <= '9')
-			{
-				if (i != 0) num[0] *= 10;
-				num[0] += (str[i] - '0');
-			}
-			else if (str[i] == '.' || str[i] == ',')
-			{
-				coma_det = 1;
-				start_num2 = i+1;
-			}
-		}
-		else
-		{
-			if (str[i] >= '0' && str[i] <= '9')
-			{
-				if (i != start_num2)
-				{
-					num[1] *= 10;
-					num2_dev *= 10;
-				}
-				num[1] += (str[i] - '0');
-			}
-		}
-	}
-	result = num[0] + num[1]/num2_dev;
-	return result;
-}
-
-_Bool str_compare (char *str1, char *str2, uint32_t ln)
-{
-	_Bool result = 1;
-	for (uint32_t i = 0; i < ln; i++)
-	{
-		if (str1[i] != str2[i]){
-			result = 0;
-			break;
-		}
-	}
-	return result;
-}
-
-void usb_motor_calibrate (char *cmd)
-{
-	if (str_compare (cmd, "M2+CAL", 6))
-	{
-		mag_zero_set_flag = 1;
-	}
-}
-
-void pid_setting (char *cmd)
-{
-	uint8_t ln_num = 0;
-	if (cmd[0] == 'M')
-	{
-		for (uint8_t n = 2; cmd[n] != 0; n++)
-		{
-			if (cmd[n] == '+')
-			{
-				if (cmd[n+1] == 'K')
-				{
-					ln_num = 0;
-					for (uint8_t i = n+3; (cmd[i] >= '0' && cmd[i] <= '9') || cmd[i]=='.' || cmd[i]==','; i++)
-					{
-						ln_num++;
-					}
-					switch (cmd[n+2])
-					{
-					case 'P':
-						x_kp = str2float(cmd+n+3, ln_num);
-						break;
-					case 'I':
-						x_ki = str2float(cmd+n+3, ln_num);
-						break;
-					case 'D':
-						x_kd = str2float(cmd+n+3, ln_num);
-						break;
-					}
-					if (cmd[1] == '1')
-					{
-
-						PID_set_konstanta(&hbldc1.hpid_omega, x_kp, x_ki, x_kd);
-//						PID_set_konstanta(&hbldc1.hpid_id, x_kp, x_ki, 0);
-//						PID_set_konstanta(&hbldc1.hpid_iq, x_kp, x_ki, 0);
-					}
-					else if (cmd[1] == '2')
-					{
-						PID_set_konstanta(&hbldc2.hpid_theta, x_kp, x_ki, x_kd);
-					}
-				}
-			}
-		}
-	}
-	else if (cmd[0] == 'N' || cmd[0] == 'n')
-	{
-		next_change_param = 1;
-	}
-	else if (cmd[0] == '0')
-	{
-		start_checking_mosfet = 1;
-	}
-}
-
-void zero_mosfet ()
-{
-	hbldc1.ia = 0;
-	hbldc1.ib = 0;
-	hbldc1.ic = 0;
-	hbldc2.ia = 0;
-	hbldc2.ib = 0;
-	hbldc2.ic = 0;
-	BLDC_spwm(&hbldc1);
-	BLDC_spwm(&hbldc2);
-}
-
-void mosfet_check ()
-{
-	_Bool error[6] = {0, 0, 0, 0, 0, 0};
-	uint32_t time_error_tolerant[6], time_test, loading_t;
-	uint8_t system_failed = 0;
-	double current_tolerant = 0.05;
-
-	hbldc1.ia = 0;
-	hbldc1.ib = 0;
-	hbldc1.ic = 0;
-	hbldc2.ia = 0;
-	hbldc2.ib = 0;
-	hbldc2.ic = 0;
-	M2_EN_U_GPIO_Port->BSRR = M2_EN_U_Pin<<16;
-	M2_EN_V_GPIO_Port->BSRR = M2_EN_V_Pin<<16;
-	M2_EN_W_GPIO_Port->BSRR = M2_EN_W_Pin<<16;
-	M1_EN_U_GPIO_Port->BSRR = M1_EN_U_Pin<<16;
-	M1_EN_V_GPIO_Port->BSRR = M1_EN_V_Pin<<16;
-	M1_EN_W_GPIO_Port->BSRR = M1_EN_W_Pin<<16;
-
-	LED_BUILTIN_GPIO_Port->BSRR = LED_BUILTIN_Pin;
-	while (!start_checking_mosfet)
-	{
-		BLDC_get_current(&hbldc1);
-		BLDC_get_current(&hbldc2);
-	}
-	LED_BUILTIN_GPIO_Port->BSRR = LED_BUILTIN_Pin<<16;
-	CDC_Transmit_FS ((uint8_t *)"\nStart Checking\n\n", 17);
-	time_test = HAL_GetTick();
-	loading_t = HAL_GetTick();
-	while (HAL_GetTick() - time_test < 1000)
-	{
-		BLDC_spwm(&hbldc1);
-		BLDC_spwm(&hbldc2);
-		BLDC_get_current_test(&hbldc1);
-		BLDC_get_current_test(&hbldc2);
-		error[0] = (hbldc1.hdlpf_current_filt[_u].result > current_tolerant);
-		error[1] = (hbldc1.hdlpf_current_filt[_v].result > current_tolerant);
-		error[2] = (hbldc1.hdlpf_current_filt[_w].result > current_tolerant);
-		error[3] = (hbldc2.hdlpf_current_filt[_u].result > current_tolerant);
-		error[4] = (hbldc2.hdlpf_current_filt[_v].result > current_tolerant);
-		error[5] = (hbldc2.hdlpf_current_filt[_w].result > current_tolerant);
-		for (uint8_t i = 0; i < 6; i++)
-		{
-			if (!error[i]) time_error_tolerant[i] = HAL_GetTick();
-			else
-			{
-				if (HAL_GetTick() - time_error_tolerant[i] >= 1)
-				{
-					system_failed |= 1 << i;
-					switch (i)
-					{
-					case 0: M2_EN_U_GPIO_Port->BSRR = M2_EN_U_Pin<<16; break;
-					case 1: M2_EN_V_GPIO_Port->BSRR = M2_EN_V_Pin<<16; break;
-					case 2: M2_EN_W_GPIO_Port->BSRR = M2_EN_W_Pin<<16; break;
-					case 3: M1_EN_U_GPIO_Port->BSRR = M1_EN_U_Pin<<16; break;
-					case 4: M1_EN_V_GPIO_Port->BSRR = M1_EN_V_Pin<<16; break;
-					case 5: M1_EN_W_GPIO_Port->BSRR = M1_EN_W_Pin<<16; break;
-					}
-				}
-			}
-		}
-		if (HAL_GetTick() - loading_t >= 100)
-		{
-			loading_t = HAL_GetTick();
-			CDC_Transmit_FS ((uint8_t *)"* ", 2);
-		}
-	}
-	HAL_Delay(1);
-	CDC_Transmit_FS ((uint8_t *)"\n\n", 2);
-	HAL_Delay(1);
-	if (system_failed == 0)
-	{
-		CDC_Transmit_FS ((uint8_t *)"System OK!\n", 11);
-	}
-	else
-	{
-		CDC_Transmit_FS ((uint8_t *)
-				"!!FAILUR DETECTED!!\nPlease Check Your MOSFETs: ", 47);
-		HAL_Delay(10);
-		for (uint8_t i = 0; i < 6; i++)
-		{
-			if ((system_failed >> i) & 1)
-			{
-				uint32_t ln = sprintf ((char*)usb_tx_buff, "%d ", i+1);
-				CDC_Transmit_FS (usb_tx_buff, ln);
-				HAL_Delay(1);
-			}
-		}
-	}
-	CDC_Transmit_FS ((uint8_t *)"\n\n", 2);
-	start_checking_mosfet = 0;
-}
-
-void BLDC1_testing (BLDC_TestTypedef mode)
-{
-	float iq_sp = 1, rpm_sp, q = 0;
-	_Bool pulse_state = 0;
-	uint32_t param_time = HAL_GetTick(), time_delay = 100, param_change = 0;
-	_Bool stop_send = 1;
-	while (1)
-	{
-		switch (mode)
-		{
-		case _dq_test:
-			if (!stop_send)
-			{
-				if (HAL_GetTick() - param_time >= time_delay)
-				{
-					param_time = HAL_GetTick();
-					if (pulse_state == 0)
-					{
-						pulse_state = 1;
-						time_delay = 2000;
-						q = iq_sp;
-					}
-					else
-					{
-						stop_send = 1;
-						q = 0;
-					}
-				}
-				if (HAL_GetTick() != usb_tx_t)
-				{
-				  usb_tx_t = HAL_GetTick();
-				  uint32_t ln = sprintf ((char*)usb_tx_buff, "%.3f %.3f %.3f\n",
-						  q*1000, i_test[0].result*1000, i_test[1].result*1000);
-				  CDC_Transmit_FS (usb_tx_buff, ln);
-				}
-			}
-			else
-			{
-				if (next_change_param)
-				{
-					next_change_param = 0;
-					stop_send = 0;
-					pulse_state = 0;
-					time_delay = 100;
-//					switch (param_change)
-//					{
-//					case 0: PID_set_konstanta(&hbldc1.hpid_id, 0.3, 0.00001, 0); break;
-//					case 1: PID_set_konstanta(&hbldc1.hpid_id, 0.3, 0.00002, 0); break;
-//					case 2: PID_set_konstanta(&hbldc1.hpid_id, 0.3, 0.00003, 0); break;
-//					case 3: PID_set_konstanta(&hbldc1.hpid_id, 0.3, 0.00004, 0); break;
-//					case 4: PID_set_konstanta(&hbldc1.hpid_id, 0.3, 0.00005, 0); break;
-//					case 5: PID_set_konstanta(&hbldc1.hpid_id, 0.3, 0.00006, 0); break;
-//					case 6: PID_set_konstanta(&hbldc1.hpid_id, 0.3, 0.00007, 0); break;
-//					case 7: PID_set_konstanta(&hbldc1.hpid_id, 0.3, 0.00008, 0); break;
-//					case 8: PID_set_konstanta(&hbldc1.hpid_id, 0.3, 0.00009, 0); break;
-//					case 9: PID_set_konstanta(&hbldc1.hpid_id, 0.3, 0.0001, 0); break;
-//					}
-					param_change++;
-					param_time = HAL_GetTick();
-				}
-			}
-			BLDC_get_sector (&hbldc1);
-			BLDC_current_control(&hbldc1, 0, q, hbldc1.sector_theta + 90);
-			dlpf_get_result(&i_test[0], hbldc1.id_result);
-			dlpf_get_result(&i_test[1], hbldc1.iq_result);
-			break;
-		case _current_test:
-			BLDC_set_speed (100);
-			dlpf_get_result(&i_test[0], hbldc1.hdlpf_current_filt[_u].result);
-			dlpf_get_result(&i_test[1], hbldc1.hdlpf_current_filt[_v].result);
-			dlpf_get_result(&i_test[2], hbldc1.hdlpf_current_filt[_w].result);
-			if (HAL_GetTick() != usb_tx_t)
-			{
-			  usb_tx_t = HAL_GetTick();
-			  uint32_t ln = sprintf ((char*)usb_tx_buff, "%.3f %.3f %.3f\n",
-					  i_test[0].result * 1000, i_test[1].result * 1000, i_test[2].result * 1000);
-			  CDC_Transmit_FS (usb_tx_buff, ln);
-			}
-			break;
-		case _speed_test:
-//			if (HAL_GetTick() - usb_tx_t >= 20)
-//			{
-//			  usb_tx_t = HAL_GetTick();
-//			  uint32_t ln = sprintf ((char*)usb_tx_buff, "%.3f %.3f %.3f\n",
-//					  rpm_sp, i_test[0].result, hbldc1.hpid_omega.error);
-//			  CDC_Transmit_FS (usb_tx_buff, ln);
-//			}
-			if (!stop_send)
-			{
-				if (HAL_GetTick() - param_time >= time_delay)
-				{
-					param_time = HAL_GetTick();
-					if (pulse_state == 0)
-					{
-						pulse_state = 1;
-						time_delay = 10000;
-//						rpm_sp = 100;
-					}
-					else
-					{
-						stop_send = 1;
-						rpm_sp = 0;
-					}
-				}
-			}
-			else
-			{
-				if (next_change_param)
-				{
-					next_change_param = 0;
-					stop_send = 0;
-					pulse_state = 0;
-					time_delay = 100;
-//					switch (param_change)
-//					{
-//					case 0: PID_set_konstanta(&hbldc1.hpid_omega, 0.006, 0.0000002, 0); break;
-//					case 1: PID_set_konstanta(&hbldc1.hpid_omega, 0.006, 0.0000004, 0); break;
-//					case 2: PID_set_konstanta(&hbldc1.hpid_omega, 0.006, 0.0000006, 0); break;
-//					case 3: PID_set_konstanta(&hbldc1.hpid_omega, 0.006, 0.0000008, 0); break;
-//					case 4: PID_set_konstanta(&hbldc1.hpid_omega, 0.006, 0.000001, 0); break;
-//					case 5: PID_set_konstanta(&hbldc1.hpid_omega, 0.006, 0.0000012, 0); break;
-//					case 6: PID_set_konstanta(&hbldc1.hpid_omega, 0.006, 0.0000014, 0); break;
-//					case 7: PID_set_konstanta(&hbldc1.hpid_omega, 0.006, 0.0000016, 0); break;
-//					case 8: PID_set_konstanta(&hbldc1.hpid_omega, 0.006, 0.0000018, 0); break;
-//					case 9: PID_set_konstanta(&hbldc1.hpid_omega, 0.006, 0.000002, 0); break;
-//					}
-					switch (param_change)
-					{
-					case 0: rpm_sp = 10; break;
-					case 1: rpm_sp = 20; break;
-					case 2: rpm_sp = 30; break;
-					case 3: rpm_sp = 40; break;
-					case 4: rpm_sp = 50; break;
-					case 5: rpm_sp = 60; break;
-					case 6: rpm_sp = 70; break;
-					case 7: rpm_sp = 80; break;
-					case 8: rpm_sp = 90; break;
-					case 9: rpm_sp = 100; break;
-					case 10: rpm_sp = 200; break;
-					case 11: rpm_sp = 300; break;
-					case 12: rpm_sp = 400; break;
-					case 13: rpm_sp = 500; break;
-					case 14: rpm_sp = 0; break;
-					}
-					param_change++;
-					if (param_change > 14) param_change = 0;
-					param_time = HAL_GetTick();
-				}
-			}
-			BLDC_set_angle (0);
-			BLDC_set_speed (rpm_sp);
-			dlpf_get_result(&i_test[0], hbldc1.rpm);
-			break;
-		case _torque_test: break;
-		case _angle_test: break;
-		}
-	}
-}
-
-void BLDC2_testing (BLDC_TestTypedef mode)
-{
-	float iq_sp = 0.5, q = 0;
-	_Bool pulse_state = 0;
-	uint32_t param_time = HAL_GetTick(), time_delay = 100, param_change = 0;
-	float angle_sp = 0;
-	_Bool stop_send = 1;
-	while (1)
-	{
-		switch (mode)
-		{
-		case _dq_test:
-			if (!stop_send)
-			{
-				if (HAL_GetTick() - param_time >= time_delay)
-				{
-					param_time = HAL_GetTick();
-					if (pulse_state == 0)
-					{
-						pulse_state = 1;
-						time_delay = 2000;
-						q = iq_sp;
-					}
-					else
-					{
-						stop_send = 1;
-						q = 0;
-					}
-				}
-				if (HAL_GetTick() != usb_tx_t)
-				{
-				  usb_tx_t = HAL_GetTick();
-				  uint32_t ln = sprintf ((char*)usb_tx_buff, "%.3f %.3f %.3f\n",
-						  q, i_test[0].result, i_test[1].result);
-				  CDC_Transmit_FS (usb_tx_buff, ln);
-				}
-			}
-			else
-			{
-				if (next_change_param)
-				{
-					next_change_param = 0;
-					stop_send = 0;
-					pulse_state = 0;
-					time_delay = 100;
-//					switch (param_change)
-//					{
-//					case 0: PID_set_konstanta(&hbldc2.hpid_id, 0.002, 0.0001, 0); break;
-//					case 1: PID_set_konstanta(&hbldc2.hpid_id, 0.002, 0.0002, 0); break;
-//					case 2: PID_set_konstanta(&hbldc2.hpid_id, 0.002, 0.0003, 0); break;
-//					case 3: PID_set_konstanta(&hbldc2.hpid_id, 0.002, 0.0004, 0); break;
-//					case 4: PID_set_konstanta(&hbldc2.hpid_id, 0.002, 0.0005, 0); break;
-//					case 5: PID_set_konstanta(&hbldc2.hpid_id, 0.002, 0.0006, 0); break;
-//					case 6: PID_set_konstanta(&hbldc2.hpid_id, 0.002, 0.0007, 0); break;
-//					case 7: PID_set_konstanta(&hbldc2.hpid_id, 0.002, 0.0008, 0); break;
-//					case 8: PID_set_konstanta(&hbldc2.hpid_id, 0.002, 0.0009, 0); break;
-//					case 9: PID_set_konstanta(&hbldc2.hpid_id, 0.002, 0.001, 0); break;
-//					}
-					param_change++;
-					param_time = HAL_GetTick();
-				}
-			}
-			angle_sector = (raw_angle+mag_angle_offset) * 11.0;
-			BLDC_current_control (&hbldc2, 0, q, angle_sector-90);
-			dlpf_get_result(&i_test[0], hbldc2.id_result);
-			dlpf_get_result(&i_test[1], hbldc2.iq_result);
-			break;
-
-		case _current_test:
-			angle_sector = (raw_angle+mag_angle_offset) * 11.0;
-			BLDC_current_control (&hbldc2, 0, 0.3, angle_sector-90);
-			dlpf_get_result(&i_test[0], hbldc2.hdlpf_current_filt[_u].result);
-			dlpf_get_result(&i_test[1], hbldc2.hdlpf_current_filt[_v].result);
-			dlpf_get_result(&i_test[2], hbldc2.hdlpf_current_filt[_w].result);
-			if (HAL_GetTick() != usb_tx_t)
-			{
-			  usb_tx_t = HAL_GetTick();
-			  uint32_t ln = sprintf ((char*)usb_tx_buff, "%.3f %.3f %.3f\n",
-					  i_test[0].result * 1000, i_test[1].result * 1000, i_test[2].result * 1000);
-			  CDC_Transmit_FS (usb_tx_buff, ln);
-			}
-			break;
-		case _speed_test:
-			break;
-		case _torque_test:
-			break;
-		case _angle_test:
-			if (!stop_send)
-			{
-				if (HAL_GetTick() - param_time >= time_delay)
-				{
-					param_time = HAL_GetTick();
-					if (pulse_state == 0)
-					{
-						pulse_state = 1;
-						time_delay = 2000;
-						angle_sp = 45;
-					}
-					else
-					{
-						stop_send = 1;
-						angle_sp = 0;
-					}
-				}
-				if (HAL_GetTick() - usb_tx_t >= 20)
-				{
-				  usb_tx_t = HAL_GetTick();
-				  uint32_t ln = sprintf ((char*)usb_tx_buff, "%.3f %.3f\n",
-						  angle_sp, angle_sens);
-				  CDC_Transmit_FS (usb_tx_buff, ln);
-				}
-			}
-			else
-			{
-				if (next_change_param)
-				{
-					next_change_param = 0;
-					stop_send = 0;
-					pulse_state = 0;
-					time_delay = 100;
-					switch (param_change)
-					{
-					case 0: PID_set_konstanta(&hbldc2.hpid_theta, 1.5, 0, 0.001); break;
-					case 1: PID_set_konstanta(&hbldc2.hpid_theta, 1.5, 0, 0.002); break;
-					case 2: PID_set_konstanta(&hbldc2.hpid_theta, 1.5, 0, 0.003); break;
-					case 3: PID_set_konstanta(&hbldc2.hpid_theta, 1.5, 0, 0.004); break;
-					case 4: PID_set_konstanta(&hbldc2.hpid_theta, 1.5, 0, 0.005); break;
-					case 5: PID_set_konstanta(&hbldc2.hpid_theta, 1.5, 0, 0.006); break;
-					case 6: PID_set_konstanta(&hbldc2.hpid_theta, 1.5, 0, 0.007); break;
-					case 7: PID_set_konstanta(&hbldc2.hpid_theta, 1.5, 0, 0.008); break;
-					case 8: PID_set_konstanta(&hbldc2.hpid_theta, 1.5, 0, 0.009); break;
-					case 9: PID_set_konstanta(&hbldc2.hpid_theta, 1.5, 0, 0.01); break;
-					}
-					param_change++;
-//					if (param_change > 5) param_change = 0;
-					param_time = HAL_GetTick();
-				}
-			}
-			BLDC_set_angle (angle_sp);
-			BLDC_set_speed (0);
-			break;
-		}
-	}
-}
-
-void TA_percobaan (BLDC_TestTypedef mode, BLDC_HandleTypeDef *hbldc)
-{
-	float iq_sp = 0, rpm_sp = 0, angle_sp = 0;
-	uint32_t param_time = HAL_GetTick(), time_delay = 100, param_change = 0;
-	_Bool stop_send = 1;
-	while (1)
-	{
-		switch (mode)
-		{
-		case _current_test:
-			if (!stop_send)
-			{
-				if (HAL_GetTick() - param_time >= time_delay)
-				{
-					param_time = HAL_GetTick();
-
-//					iq_sp+=0.01;
-//					if (iq_sp > 3.0)
-//					{
-//						iq_sp = 0;
-//						stop_send = 1;
-//					}
-					iq_sp = 0;
-					stop_send = 1;
-
-//					param_change++;
-//					if (param_change > 7)
-//					{
-//						param_change = 0;
-//						iq_sp = 0;
-//						stop_send = 1;
-//					}
-				}
-			}
-			else
-			{
-				if (next_change_param)
-				{
-					next_change_param = 0;
-					stop_send = 0;
-					time_delay = 5000;
-					param_change = 0;
-					iq_sp = 1.0;
-					param_time = HAL_GetTick();
-				}
-			}
-
-			if (hbldc->channel == _BLDC1)
-			{
-				BLDC_get_sector (&hbldc1);
-				BLDC_current_control(&hbldc1, 0, iq_sp, hbldc1.sector_theta + 90);
-			}
-			else
-			{
-				angle_sector = (raw_angle+mag_angle_offset) * 11.0;//11.0
-				BLDC_current_control (&hbldc2, 0, iq_sp, angle_sector+90);
-			}
-			dlpf_get_result(&i_test[0], hbldc->id_result);//hbldc1.id_result
-			dlpf_get_result(&i_test[1], hbldc->iq_result);
-			if (HAL_GetTick() - usb_tx_t >= 1)
-			{
-			  usb_tx_t = HAL_GetTick();
-			  uint32_t ln = sprintf ((char*)usb_tx_buff, "%.3f %.3f %.3f\n",
-					  iq_sp*1000, hbldc->id_result*1000, hbldc->iq_result*1000);
-			  CDC_Transmit_FS (usb_tx_buff, ln);
-			}
-			break;
-		case _speed_test:
-			if (!stop_send)
-			{
-				if (HAL_GetTick() - param_time >= time_delay)
-				{
-					param_time = HAL_GetTick();
-//					rpm_sp--;
-//					if (rpm_sp < -800)
-//					{
-//						rpm_sp = 0;
-//						stop_send = 1;
-//					}
-//					rpm_sp = 0;
-//					stop_send = 1;
-
-					switch (param_change)
-					{
-					case 0:
-						rpm_sp = 200;
-						angle_sp = 0;
-					break;
-					case 1:
-						rpm_sp = 200;
-						angle_sp = -45;
-					break;
-					case 2:
-						rpm_sp = 200;
-						angle_sp = 100;
-					break;
-					case 3:
-						rpm_sp = 200;
-						angle_sp = -100;
-					break;
-					case 4:
-						rpm_sp = 250;
-						angle_sp = 180;
-					break;
-					case 5:
-						rpm_sp = 200;
-						angle_sp = -90;
-					break;
-					}
-					optimalisasi_gerakan (angle_sp, rpm_sp);
-
-					param_change++;
-					if (param_change > 5)
-					{
-						param_change = 0;
-						rpm_sp = 0;
-						angle_sp = 0;
-						stop_send = 1;
-					}
-				}
-				if (HAL_GetTick() - usb_tx_t >= 10)
-				{
-				  usb_tx_t = HAL_GetTick();
-				  uint32_t ln = sprintf ((char*)usb_tx_buff, "%.3f %.3f %.3f %.3f\n",
-						  rpm_sp, i_test[0].result, angle_sp, angle_sens);
-				  CDC_Transmit_FS (usb_tx_buff, ln);
-				}
-			}
-			else
-			{
-				if (next_change_param)
-				{
-					next_change_param = 0;
-					rpm_sp = 0;
-					angle_sp = 0;
-					stop_send = 0;
-					param_change = 0;
-					time_delay = 2000;//10
-					param_time = HAL_GetTick();
-				}
-			}
-			BLDC_set_angle (data_angle);
-			BLDC_set_speed (data_rpm);
-			dlpf_get_result(&i_test[0], hbldc1.rpm);
-			break;
-		case _angle_test:
-			if (!stop_send)
-			{
-				if (HAL_GetTick() - param_time >= time_delay)
-				{
-					param_time = HAL_GetTick();
-
-					angle_sp-=180;
-//					if (angle_sp >= 1)
-//					{
-//						angle_sp = 0;
-//						stop_send = 1;
-//					}
-
-					param_change++;
-					if (param_change > 1)
-					{
-						param_change = 0;
-						angle_sp = 0;
-						stop_send = 1;
-					}
-				}
-			}
-			else
-			{
-				if (next_change_param)
-				{
-					next_change_param = 0;
-					stop_send = 0;
-					time_delay = 1000;
-					param_change = 0;
-					angle_sp = 0;//0.025
-					param_time = HAL_GetTick();
-				}
-			}
-
-			BLDC_set_angle (angle_sp);
-			BLDC_set_speed (0);
-			if (HAL_GetTick() - usb_tx_t >= 10)
-			{
-			  usb_tx_t = HAL_GetTick();
-			  uint32_t ln = sprintf ((char*)usb_tx_buff, "%.3f %.3f\n",
-					  angle_sp, angle_sens);
-			  CDC_Transmit_FS (usb_tx_buff, ln);
-			}
-			break;
-		}
-	}
-}
-
-
-//============================================================================================
-
 void zero_steer ()
 {
 	float angle_steer_call = angle_sens;
@@ -1707,33 +209,17 @@ void zero_steer ()
 		}
 		BLDC_set_angle (angle_steer_call);
 		BLDC_set_speed (0);
-
 	}
 }
-//		dlpf_get_result(&i_test[0], hbldc2.hdlpf_current_filt[_u].result);
-//		dlpf_get_result(&i_test[1], hbldc2.hdlpf_current_filt[_v].result);
-//		dlpf_get_result(&i_test[2], hbldc2.hdlpf_current_filt[_w].result);
-//		if (HAL_GetTick() != usb_tx_t)
-//		{
-//		  usb_tx_t = HAL_GetTick();
-//		  uint32_t ln = sprintf ((char*)usb_tx_buff, "%.3f %.3f %.3f\n",
-//				  i_test[0].result * 1000, i_test[1].result * 1000, i_test[2].result * 1000);
-//		  CDC_Transmit_FS (usb_tx_buff, ln);
-//		}
 
 //============================================================================================
 
 void wheel_init ()
 {
-#ifdef WHEEL_Z
-	wheel_addr = 0x101;
-	zero_offset = 0;
-	mag_angle_offset = -29.5601177;
-#else
 #ifdef WHEEL_X
 	wheel_addr = 0x100;
 	zero_offset = 0;
-	mag_angle_offset = -16.78;
+	mag_angle_offset = -23.2;
 #else
 #ifdef WHEEL_0
 	wheel_addr = 0x200;
@@ -1748,10 +234,9 @@ void wheel_init ()
 #ifdef WHEEL_2
 	wheel_addr = 0x222;
 	zero_offset = -180.0;
-	mag_angle_offset = -16.78;//-26.04
+	mag_angle_offset = -10.98;//-16.78
 #else
 #error "Pilih antara WHEEL_0, WHEEL_1, atau WHEEL_2!"
-#endif
 #endif
 #endif
 #endif
@@ -1767,34 +252,21 @@ void wheel_init ()
 	TxHeader.IDE = CAN_ID_STD;
 	TxHeader.RTR = CAN_RTR_DATA;
 
-	HAL_Delay(200);
-	FLASH_set_sector_addrs (FLASH_SECTOR_11, 0x080E0000);
-	//  flash_data_buff[0] = (int32_t)(a*100000);
-	//  flash_data_buff[1] = (int32_t)(b*100000);
-	//  FLASH_write(0, flash_data_buff, 2, DATA_TYPE_32);
-	FLASH_read(0, flash_data_buff, 2, DATA_TYPE_32);
-//	mag_angle_offset =  (float)(int32_t)flash_data_buff[0] / 100000;
-//	b =  (float)(int32_t)flash_data_buff[1] / 100000;
 }
 
 //============================================================================================
 
-uint32_t tcnt1, tcnt2;
 void HAL_ADCEx_InjectedConvCpltCallback(ADC_HandleTypeDef* hadc)
 {
-	if (hadc->Instance == ADC2)
+	if (hadc->Instance == WHEELED_ADC)
 	{
-		hbldc1.adc_buff[0] = HAL_ADCEx_InjectedGetValue(&hadc2, ADC_INJECTED_RANK_1);
-		hbldc1.adc_buff[1] = HAL_ADCEx_InjectedGetValue(&hadc2, ADC_INJECTED_RANK_2);
-		hbldc1.adc_buff[2] = HAL_ADCEx_InjectedGetValue(&hadc2, ADC_INJECTED_RANK_3);
-		BLDC_get_current (&hbldc1);
+		BLDC_get_current (&WHEELED_handler);
+		BLDC_set_speed (data_rpm);//data_rpm
 	}
-	if (hadc->Instance == ADC3)
+	if (hadc->Instance == STEERING_ADC)
 	{
-		hbldc2.adc_buff[0] = HAL_ADCEx_InjectedGetValue(&hadc3, ADC_INJECTED_RANK_1);
-		hbldc2.adc_buff[1] = HAL_ADCEx_InjectedGetValue(&hadc3, ADC_INJECTED_RANK_2);
-		hbldc2.adc_buff[2] = HAL_ADCEx_InjectedGetValue(&hadc3, ADC_INJECTED_RANK_3);
-		BLDC_get_current (&hbldc2);
+		BLDC_get_current (&STEERING_handler);
+		BLDC_set_angle (data_angle);//data_angle
 	}
 }
 
@@ -1812,27 +284,6 @@ void HAL_TIM_IC_CaptureCallback(TIM_HandleTypeDef *htim)
 	}
 }
 
-void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
-{
-	if (htim->Instance == TIM3)
-	{
-		cnt_ovf++;
-	}
-	if (htim->Instance == TIM7)
-	{
-		if (read_ready)
-		{
-//			HAL_TIM_Base_Stop_IT(&htim7);
-		  if (AS5048A_send_data (1, 1, 0x3fff) == HAL_OK)
-			  read_ready = 0;
-		}
-	}
-	if (htim->Instance == TIM4)
-	{
-		counting_time ();
-	}
-}
-
 void HAL_SPI_TxRxCpltCallback(SPI_HandleTypeDef *hspi)
 {
 	if (hspi->Instance == SPI1)
@@ -1841,9 +292,9 @@ void HAL_SPI_TxRxCpltCallback(SPI_HandleTypeDef *hspi)
 		error_flag = (encd_data_rx>>14) & 1;
 		if (!error_flag)
 		{
-			uint16_t val = (encd_data_rx & (0x3fff))>>0;//4
+			uint16_t val = (encd_data_rx & (0x3fff))>>0;//0
 //			raw_angle = val * 720.0 / 1023.0;
-			raw_angle = (double)val * 720.0 / (double)0x3fff;//1023.0
+			raw_angle = (float)val * 720.0 / (float)0x3fff;//1023.0 //0x3fff
 			if (raw_angle - last_raw_angle < -300)
 			{
 				raw_angle_ovf++;
@@ -1852,8 +303,7 @@ void HAL_SPI_TxRxCpltCallback(SPI_HandleTypeDef *hspi)
 			{
 				raw_angle_ovf--;
 			}
-			angle_sens = (raw_angle + raw_angle_ovf * 360.0)*-0.1172108178559791463 - steer_angle_offset;
-			z_lift = (raw_angle + raw_angle_ovf * 360.0)*0.00222222222222222222222222222222 - z_offset;
+			angle_sens = (raw_angle + (double)raw_angle_ovf * 360.0)*-0.1172108178559791463 - steer_angle_offset;
 			last_raw_angle = raw_angle;
 		}
 		TIM7->CNT = 0;
@@ -1876,31 +326,6 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 
 //==================================================================================
 
-void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
-{
-	HAL_CAN_GetRxMessage(&hcan1, CAN_RX_FIFO0, &RxHeader, can_rx_buff);
-	if (RxHeader.StdId == wheel_addr)
-	{
-		switch (can_rx_buff[0])
-		{
-		case _SET_WHEEL:
-			CAN_get_wheel ();
-			CAN_send_wheel (wheel_addr, angle_sens, hall_sens_count);
-			hall_sens_count = 0;
-			break;
-		case _SET_ZERO_OFFSET:
-			CAN_get_zero_offset ();
-			CAN_send_ok (wheel_addr);
-			break;
-		case 0x12:
-			CAN_get_z ();
-			break;
-		}
-		led_can_respone = can_rx_buff[0];
-	}
-}
-
-//235.77713
 /* USER CODE END 0 */
 
 /**
@@ -1942,14 +367,29 @@ int main(void)
   MX_TIM8_Init();
   MX_TIM2_Init();
   MX_TIM7_Init();
-  MX_USB_DEVICE_Init();
   MX_TIM3_Init();
   MX_TIM4_Init();
   /* USER CODE BEGIN 2 */
+  FOC_init ();
   wheel_init ();
+
+  dlpf_set_alpha(&i_test[0], 0.01);
+  dlpf_set_alpha(&i_test[1], 0.01);
+  dlpf_set_alpha(&i_test[2], 0.01);
 
   BLDC_init (&hbldc1);
   BLDC_init (&hbldc2);
+
+  HAL_Delay(200);
+  FLASH_set_sector_addrs (FLASH_SECTOR_11, 0x080E0000);
+#if SET_DEFAULT_PARAM
+  set_default_motor_param ();
+  flash_save_data ();
+#else
+  flash_get_data ();
+#endif
+  LED_BUILTIN_GPIO_Port->BSRR = LED_BUILTIN_Pin;
+
   BLDC_get_sector (&hbldc1);
 
   HAL_TIM_Base_Start_IT(&htim3);
@@ -1957,74 +397,64 @@ int main(void)
 
   HAL_TIM_Base_Start_IT(&htim7);
   AS5048A_send_data (1, 1, 0x3fff);
-  BLDC_beep(&hbldc2, 3136, 100);
-  HAL_Delay(100);
-  BLDC_beep(&hbldc2, 3136, 100);
-  HAL_Delay(100);
-  BLDC_beep(&hbldc2, 3136, 100);
-  HAL_Delay(100);
-//  TA_percobaan (_angle_test, &hbldc2);
-//  TA_percobaan (_speed_test, &hbldc1);
-//  BLDC1_testing (_speed_test);
-//  BLDC2_testing (_angle_test);//_dq_test
-#ifdef WHEEL_Z
-  lifter_goto_zero ();
-#else
-  zero_steer ();
-#endif
-//  data_rpm = 100;
+  BLDC_spwm (&STEERING_handler);
+  BLDC_spwm (&WHEELED_handler);
+//  BLDC_beep(&hbldc2, 3136, 100);
+//  HAL_Delay(100);
+//  BLDC_beep(&hbldc2, 3136, 100);
+//  HAL_Delay(100);
+//  BLDC_beep(&hbldc2, 3136, 100);
+//  HAL_Delay(100);
+
+//  zero_steer ();
+  data_rpm = 100;
   /* USER CODE END 2 */
 
+  /* Init scheduler */
+  osKernelInitialize();
+
+  /* USER CODE BEGIN RTOS_MUTEX */
+  /* add mutexes, ... */
+  /* USER CODE END RTOS_MUTEX */
+
+  /* USER CODE BEGIN RTOS_SEMAPHORES */
+  /* add semaphores, ... */
+  /* USER CODE END RTOS_SEMAPHORES */
+
+  /* USER CODE BEGIN RTOS_TIMERS */
+  /* start timers, add new ones, ... */
+  /* USER CODE END RTOS_TIMERS */
+
+  /* USER CODE BEGIN RTOS_QUEUES */
+  /* add queues, ... */
+  /* USER CODE END RTOS_QUEUES */
+
+  /* Create the thread(s) */
+  /* creation of defaultTask */
+//  defaultTaskHandle = osThreadNew(StartDefaultTask, NULL, &defaultTask_attributes);
+  blink_task_handle = osThreadNew(start_blink_task, NULL, &blink_task_attributes);
+  command_task_handle = osThreadNew(start_command_task, NULL, &command_task_attributes);
+
+  /* USER CODE BEGIN RTOS_THREADS */
+  /* add threads, ... */
+  /* USER CODE END RTOS_THREADS */
+
+  /* USER CODE BEGIN RTOS_EVENTS */
+  /* add events, ... */
+  /* USER CODE END RTOS_EVENTS */
+
+  /* Start scheduler */
+  osKernelStart();
+  /* We should never get here as control is now taken by the scheduler */
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-//	  zero_mosfet ();
-	  blink_respone ();
-
-	  if (mag_zero_set_flag)
-	  {
-		  mag_zero_set_flag = 0;
-		  BLDC2_zero_cal ();
-	  }
-
-#ifdef WHEEL_Z
-//	  if (HAL_GetTick() - timer_test0 >= 5000)
+//	  if (mag_zero_set_flag)
 //	  {
-//		  timer_test0 = HAL_GetTick();
-//		  switch (test_state)
-//		  {
-//		  case 0: cm = 10; break;
-//		  case 1: cm = 20; break;
-//		  case 2: cm = 30; break;
-//		  case 3: cm = 0; break;
-//		  }
-//		  test_state++;
-//		  if (test_state > 3) test_state = 0;
+//		  mag_zero_set_flag = 0;
+//		  BLDC2_zero_cal ();
 //	  }
-	  BLDC_set_z (z_cm);
-	  if (fabs (z_cm - z_lift) <= 0.2)
-	  {
-		  if (!lifter_ok_flag)
-		  {
-			  lifter_ok_flag = 1;
-			  CAN_send_z (wheel_addr, z_lift);
-		  }
-	  }
-	  else if (fabs (z_cm - z_lift) > 0.5)
-	  {
-		  if (lifter_ok_flag)
-			  lifter_ok_flag = 0;
-	  }
-#else
-//	  angle_sector = (raw_angle+mag_angle_offset) * 11.0;
-//	  BLDC_current_control (&hbldc2, 0, 1.0, 0);
-
-	  BLDC_set_angle (data_angle);//data_angle
-	  BLDC_set_speed (data_rpm);//data_rpm
-#endif
-//	  angle_sector = (raw_angle+mag_angle_offset) * 7;
-//	  BLDC_current_control (&hbldc2, 0, 0.1, angle_sector+120);
 
     /* USER CODE END WHILE */
 
@@ -2201,7 +631,7 @@ static void MX_ADC2_Init(void)
   sConfigInjected.InjectedChannel = ADC_CHANNEL_13;
   sConfigInjected.InjectedRank = 1;
   sConfigInjected.InjectedNbrOfConversion = 3;
-  sConfigInjected.InjectedSamplingTime = ADC_SAMPLETIME_15CYCLES;
+  sConfigInjected.InjectedSamplingTime = ADC_SAMPLETIME_3CYCLES;
   sConfigInjected.ExternalTrigInjecConvEdge = ADC_EXTERNALTRIGINJECCONVEDGE_FALLING;
   sConfigInjected.ExternalTrigInjecConv = ADC_EXTERNALTRIGINJECCONV_T8_CC4;
   sConfigInjected.AutoInjectedConv = DISABLE;
@@ -2306,7 +736,7 @@ static void MX_ADC3_Init(void)
   sConfigInjected.InjectedChannel = ADC_CHANNEL_10;
   sConfigInjected.InjectedRank = 1;
   sConfigInjected.InjectedNbrOfConversion = 3;
-  sConfigInjected.InjectedSamplingTime = ADC_SAMPLETIME_15CYCLES;
+  sConfigInjected.InjectedSamplingTime = ADC_SAMPLETIME_3CYCLES;
   sConfigInjected.ExternalTrigInjecConvEdge = ADC_EXTERNALTRIGINJECCONVEDGE_FALLING;
   sConfigInjected.ExternalTrigInjecConv = ADC_EXTERNALTRIGINJECCONV_T1_CC4;
   sConfigInjected.AutoInjectedConv = DISABLE;
@@ -2620,9 +1050,9 @@ static void MX_TIM4_Init(void)
 
   /* USER CODE END TIM4_Init 1 */
   htim4.Instance = TIM4;
-  htim4.Init.Prescaler = 0;
+  htim4.Init.Prescaler = 83;
   htim4.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim4.Init.Period = 65535;
+  htim4.Init.Period = 9999;
   htim4.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim4.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   if (HAL_TIM_Base_Init(&htim4) != HAL_OK)
@@ -2836,19 +1266,19 @@ static void MX_DMA_Init(void)
 
   /* DMA interrupt init */
   /* DMA2_Stream0_IRQn interrupt configuration */
-  HAL_NVIC_SetPriority(DMA2_Stream0_IRQn, 0, 0);
+  HAL_NVIC_SetPriority(DMA2_Stream0_IRQn, 5, 0);
   HAL_NVIC_EnableIRQ(DMA2_Stream0_IRQn);
   /* DMA2_Stream2_IRQn interrupt configuration */
-  HAL_NVIC_SetPriority(DMA2_Stream2_IRQn, 1, 0);
+  HAL_NVIC_SetPriority(DMA2_Stream2_IRQn, 5, 0);
   HAL_NVIC_EnableIRQ(DMA2_Stream2_IRQn);
   /* DMA2_Stream3_IRQn interrupt configuration */
-  HAL_NVIC_SetPriority(DMA2_Stream3_IRQn, 0, 0);
+  HAL_NVIC_SetPriority(DMA2_Stream3_IRQn, 5, 0);
   HAL_NVIC_EnableIRQ(DMA2_Stream3_IRQn);
   /* DMA2_Stream4_IRQn interrupt configuration */
   HAL_NVIC_SetPriority(DMA2_Stream4_IRQn, 6, 0);
   HAL_NVIC_EnableIRQ(DMA2_Stream4_IRQn);
   /* DMA2_Stream5_IRQn interrupt configuration */
-  HAL_NVIC_SetPriority(DMA2_Stream5_IRQn, 1, 0);
+  HAL_NVIC_SetPriority(DMA2_Stream5_IRQn, 5, 0);
   HAL_NVIC_EnableIRQ(DMA2_Stream5_IRQn);
 
 }
@@ -2916,7 +1346,7 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_Init(Z_LIMIT_GPIO_Port, &GPIO_InitStruct);
 
   /* EXTI interrupt init*/
-  HAL_NVIC_SetPriority(EXTI15_10_IRQn, 4, 0);
+  HAL_NVIC_SetPriority(EXTI15_10_IRQn, 5, 0);
   HAL_NVIC_EnableIRQ(EXTI15_10_IRQn);
 
 /* USER CODE BEGIN MX_GPIO_Init_2 */
@@ -2926,6 +1356,64 @@ static void MX_GPIO_Init(void)
 /* USER CODE BEGIN 4 */
 
 /* USER CODE END 4 */
+
+/* USER CODE BEGIN Header_StartDefaultTask */
+/**
+  * @brief  Function implementing the defaultTask thread.
+  * @param  argument: Not used
+  * @retval None
+  */
+/* USER CODE END Header_StartDefaultTask */
+void StartDefaultTask(void *argument)
+{
+  /* init code for USB_DEVICE */
+  MX_USB_DEVICE_Init();
+  /* USER CODE BEGIN 5 */
+  /* Infinite loop */
+  for(;;)
+  {
+    osDelay(1);
+  }
+  /* USER CODE END 5 */
+}
+
+/**
+  * @brief  Period elapsed callback in non blocking mode
+  * @note   This function is called  when TIM14 interrupt took place, inside
+  * HAL_TIM_IRQHandler(). It makes a direct call to HAL_IncTick() to increment
+  * a global variable "uwTick" used as application time base.
+  * @param  htim : TIM handle
+  * @retval None
+  */
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
+{
+  /* USER CODE BEGIN Callback 0 */
+
+  /* USER CODE END Callback 0 */
+  if (htim->Instance == TIM14) {
+    HAL_IncTick();
+  }
+  /* USER CODE BEGIN Callback 1 */
+
+	if (htim->Instance == TIM3)
+	{
+		cnt_ovf++;
+	}
+	if (htim->Instance == TIM7)
+	{
+		if (read_ready)
+		{
+//			HAL_TIM_Base_Stop_IT(&htim7);
+		  if (AS5048A_send_data (1, 1, 0x3fff) == HAL_OK)
+			  read_ready = 0;
+		}
+	}
+	if (htim->Instance == TIM4)
+	{
+		counting_time ();
+	}
+  /* USER CODE END Callback 1 */
+}
 
 /**
   * @brief  This function is executed in case of error occurrence.

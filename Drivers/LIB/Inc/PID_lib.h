@@ -14,8 +14,7 @@ typedef struct
 {
 	double 	P, I, D, kp, ki, kd,
 			error, last_error, int_error, max_mv, max_int_error,
-			mv, last_us;
-	_Bool aw;
+			mv, last_us, ts;
 }PID_HandleTypeDef;
 
 void PID_set_konstanta (PID_HandleTypeDef *hpid, double kp, double ki, double kd);

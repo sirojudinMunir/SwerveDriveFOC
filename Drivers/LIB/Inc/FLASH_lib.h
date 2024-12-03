@@ -10,6 +10,7 @@
 
 #include "stm32f4xx_hal.h"
 
+
 //Typedefs
 //1. data size
 typedef enum
@@ -23,5 +24,9 @@ void FLASH_erase_sector(void);
 void FLASH_set_sector_addrs(uint8_t sector, uint32_t addrs);
 void FLASH_write(uint32_t idx, void *wrBuf, uint32_t Nsize, DataTypeDef dataType);
 void FLASH_read(uint32_t idx, void *rdBuf, uint32_t Nsize, DataTypeDef dataType);
+
+void flash_save_data (void);
+void flash_get_data (void);
+void set_default_motor_param (void);
 
 #endif /* LIB_INC_FLASH_LIB_H_ */

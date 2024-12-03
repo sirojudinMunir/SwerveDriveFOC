@@ -1,5 +1,5 @@
 Drivers/LIB/Scr/PID_lib.o: ../Drivers/LIB/Scr/PID_lib.c \
- C:/Users/munir/git/repository/DUAL_BLDC_FOC/Drivers/LIB/Inc/PID_lib.h \
+ C:/Users/munir/git/SwerveDriveFOC/DUAL_BLDC_FOC/Drivers/LIB/Inc/PID_lib.h \
  ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal.h \
  ../Core/Inc/stm32f4xx_hal_conf.h \
  ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_rcc.h \
@@ -35,7 +35,7 @@ Drivers/LIB/Scr/PID_lib.o: ../Drivers/LIB/Scr/PID_lib.c \
  ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_pcd.h \
  ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_ll_usb.h \
  ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_pcd_ex.h
-C:/Users/munir/git/repository/DUAL_BLDC_FOC/Drivers/LIB/Inc/PID_lib.h:
+C:/Users/munir/git/SwerveDriveFOC/DUAL_BLDC_FOC/Drivers/LIB/Inc/PID_lib.h:
 ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal.h:
 ../Core/Inc/stm32f4xx_hal_conf.h:
 ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_rcc.h:

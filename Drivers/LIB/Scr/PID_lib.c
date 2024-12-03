@@ -53,33 +53,36 @@ void PID_set_max_value (PID_HandleTypeDef *hpid, double max_mv, double max_int_e
   */
 double PID_calculate (PID_HandleTypeDef *hpid, double sp, double pv)
 {
-	double result, dt;
-	dt = get_us () - hpid->last_us;
-	ts = dt;
-	if (dt < 0) dt = 0;
-	hpid->last_us = get_us ();
+	double result = 0, integral_temp, dt = 0.0001;
+
+	double us = get_us ();
+	hpid->ts = us - hpid->last_us;
+	hpid->last_us = us;
+
 	hpid->error = sp - pv;
 	hpid->P = hpid->error * hpid->kp;
-//	if (hpid->aw == 0)
-	hpid->int_error += hpid->error * dt;
-	if (hpid->int_error > hpid->max_int_error) hpid->int_error = hpid->max_int_error;
-	else if (hpid->int_error < -hpid->max_int_error) hpid->int_error = -hpid->max_int_error;
-	hpid->I = hpid->int_error * hpid->ki;
-	hpid->D = (hpid->error - hpid->last_error) * dt * hpid->kd;
-	hpid->last_error = hpid->error;
+	hpid->D = ((hpid->error - hpid->last_error) / dt) * hpid->kd;
+
+	integral_temp = hpid->int_error + (hpid->error * dt);
+	hpid->I = integral_temp * hpid->ki;
+
 	result = hpid->P + hpid->I + hpid->D;
-	hpid->aw = 0;
-	if (result > hpid->max_mv)
-	{
-		result = hpid->max_mv;
-		hpid->aw = 1;
+
+	if (result >= -hpid->max_mv && result <= hpid->max_mv){
+		hpid->int_error = integral_temp;
 	}
-	else if (result < -hpid->max_mv)
-	{
-		result = -hpid->max_mv;
-		hpid->aw = 1;
+	else{
+		if (result > hpid->max_mv){
+			result = hpid->max_mv;
+		}
+		else if (result < -hpid->max_mv){
+			result = -hpid->max_mv;
+		}
 	}
+
 	hpid->mv = result;
+	hpid->last_error = hpid->error;
+
 	return result;
 }
 
@@ -137,12 +140,13 @@ double PD_calculate (PID_HandleTypeDef *hpid, double sp, double pv)
 void counting_time (void)
 {
 	t_count++;
+	if (t_count > 999999) t_count = 0;
 }
 
 double get_us (void)
 {
 	double us;
-	us = (double)(TIM4->CNT + t_count*65535) * 0.00595238095238095;
+	us = (double)(TIM4->CNT + t_count*10000);// * 0.00595238095238095;
 	return us;
 }
 

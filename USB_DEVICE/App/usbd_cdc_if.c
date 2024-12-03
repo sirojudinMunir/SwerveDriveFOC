@@ -95,6 +95,8 @@ uint8_t UserTxBufferFS[APP_TX_DATA_SIZE];
 
 /* USER CODE BEGIN PRIVATE_VARIABLES */
 
+char buf[100];
+
 /* USER CODE END PRIVATE_VARIABLES */
 
 /**
@@ -110,6 +112,7 @@ extern USBD_HandleTypeDef hUsbDeviceFS;
 
 /* USER CODE BEGIN EXPORTED_VARIABLES */
 extern void pid_setting (char *cmd);
+extern int cmd_set (char *cmd);
 /* USER CODE END EXPORTED_VARIABLES */
 
 /**
@@ -263,8 +266,15 @@ static int8_t CDC_Receive_FS(uint8_t* Buf, uint32_t *Len)
   /* USER CODE BEGIN 6 */
   USBD_CDC_SetRxBuffer(&hUsbDeviceFS, &Buf[0]);
   USBD_CDC_ReceivePacket(&hUsbDeviceFS);
-  pid_setting ((char*)Buf);
-  usb_motor_calibrate ((char*)Buf);
+
+  uint8_t usb_buffer[100];
+  for (uint32_t i = 0; i < *Len; i++)
+  {
+	  usb_buffer[i] = Buf[i];
+  }
+//  pid_setting ((char*)usb_buffer);
+//  usb_motor_calibrate ((char*)Buf);
+  cmd_set ((char*)usb_buffer);
   return (USBD_OK);
   /* USER CODE END 6 */
 }
