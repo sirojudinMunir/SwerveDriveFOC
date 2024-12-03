@@ -1,0 +1,9 @@
+../Drivers/LIB/Scr/SWERVE_DRIVE_FOC.c:19:6:FOC_init	24	static
+../Drivers/LIB/Scr/SWERVE_DRIVE_FOC.c:27:6:BLDC_set_freq	24	static
+../Drivers/LIB/Scr/SWERVE_DRIVE_FOC.c:42:6:BLDC_init	16	static
+../Drivers/LIB/Scr/SWERVE_DRIVE_FOC.c:86:6:BLDC_get_current	88	static
+../Drivers/LIB/Scr/SWERVE_DRIVE_FOC.c:163:6:BLDC_get_current_filter	16	static
+../Drivers/LIB/Scr/SWERVE_DRIVE_FOC.c:170:6:BLDC_clark_park_trans	48	static
+../Drivers/LIB/Scr/SWERVE_DRIVE_FOC.c:183:6:BLDC_inv_clark_park_trans	48	static
+../Drivers/LIB/Scr/SWERVE_DRIVE_FOC.c:199:6:BLDC_spwm	24	static
+../Drivers/LIB/Scr/SWERVE_DRIVE_FOC.c:234:6:BLDC_current_control	56	static

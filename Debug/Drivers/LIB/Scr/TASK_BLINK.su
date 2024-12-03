@@ -1,0 +1,2 @@
+../Drivers/LIB/Scr/TASK_BLINK.c:29:6:blink_respone	8	static
+../Drivers/LIB/Scr/TASK_BLINK.c:82:6:start_blink_task	16	static
