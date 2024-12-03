@@ -18,7 +18,7 @@ typedef struct
 }PID_HandleTypeDef;
 
 void PID_set_konstanta (PID_HandleTypeDef *hpid, double kp, double ki, double kd);
-void PID_set_max_value (PID_HandleTypeDef *hpid, double max_mv, double max_int_error);
+void PID_set_max_value (PID_HandleTypeDef *hpid, double max_mv);
 double PID_calculate (PID_HandleTypeDef *hpid, double sp, double pv);
 double PI_calculate (PID_HandleTypeDef *hpid, double sp, double pv);
 double PD_calculate (PID_HandleTypeDef *hpid, double sp, double pv);

@@ -50,17 +50,20 @@ void BLDC_init (BLDC_HandleTypeDef *hbldc)
 		dlpf_set_alpha(&hbldc->hdlpf_current_filt[_w], 0.9998);
 		dlpf_set_alpha(&hbldc->hdlpf_cmps, 0.002);
 
-		PID_set_max_value(&hbldc->hpid_id, 4.0, 0);//4 4000
-		PID_set_max_value(&hbldc->hpid_iq, 4.0, 0);
-		PID_set_max_value(&hbldc->hpid_omega, hbldc->max_current, 40000000);
-		//M1+KI0.00000001
+		PID_set_max_value(&hbldc->hpid_id, 4.0);//4 4000
+		PID_set_max_value(&hbldc->hpid_iq, 4.0);
+		PID_set_max_value(&hbldc->hpid_omega, hbldc->max_current);
 
 		HAL_TIMEx_HallSensor_Start_IT (&htim5);
 		HAL_TIM_PWM_Start(WHEELED_htim, TIM_CHANNEL_1);
 		HAL_TIM_PWM_Start(WHEELED_htim, TIM_CHANNEL_2);
 		HAL_TIM_PWM_Start(WHEELED_htim, TIM_CHANNEL_3);
+
 		HAL_TIM_PWM_Start(WHEELED_htim, TIM_CHANNEL_4);
+		WHEELED_TIM->CCR4 = BLDC_PWM_ADC_TRIG;
+
 		HAL_ADCEx_InjectedStart_IT(WHEELED_hadc);
+
 		WHEELED_IR2104 (ENABLE);
 	}
 	else if (hbldc->channel == BLDC_STEERING)
@@ -70,15 +73,19 @@ void BLDC_init (BLDC_HandleTypeDef *hbldc)
 		dlpf_set_alpha(&hbldc->hdlpf_current_filt[_v], 0.95);
 		dlpf_set_alpha(&hbldc->hdlpf_current_filt[_w], 0.95);
 
-		PID_set_max_value(&hbldc->hpid_id, 4, 0);
-		PID_set_max_value(&hbldc->hpid_iq, 4, 0);
-		PID_set_max_value(&hbldc->hpid_theta, hbldc->max_current, 0);
+		PID_set_max_value(&hbldc->hpid_id, 4);
+		PID_set_max_value(&hbldc->hpid_iq, 4);
+		PID_set_max_value(&hbldc->hpid_theta, hbldc->max_current);
 
 		HAL_TIM_PWM_Start(STEERING_htim, TIM_CHANNEL_1);
 		HAL_TIM_PWM_Start(STEERING_htim, TIM_CHANNEL_2);
 		HAL_TIM_PWM_Start(STEERING_htim, TIM_CHANNEL_3);
+
 		HAL_TIM_PWM_Start(STEERING_htim, TIM_CHANNEL_4);
+		STEERING_TIM->CCR4 = BLDC_PWM_ADC_TRIG;
+
 		HAL_ADCEx_InjectedStart_IT(STEERING_hadc);
+
 		STEERING_IR2104 (ENABLE);
 	}
 }
@@ -220,14 +227,12 @@ void BLDC_spwm (BLDC_HandleTypeDef *hbldc)
 		WHEELED_TIM->CCR1 = hbldc->spwm[_u];
 		WHEELED_TIM->CCR2 = hbldc->spwm[_v];
 		WHEELED_TIM->CCR3 = hbldc->spwm[_w];
-		WHEELED_TIM->CCR4 = BLDC_PWM_ADC_TRIG;
 	}
 	else if (hbldc->channel == BLDC_STEERING)
 	{
 		STEERING_TIM->CCR1 = hbldc->spwm[_u];
 		STEERING_TIM->CCR2 = hbldc->spwm[_v];
 		STEERING_TIM->CCR3 = hbldc->spwm[_w];
-		STEERING_TIM->CCR4 = BLDC_PWM_ADC_TRIG;
 	}
 }
 

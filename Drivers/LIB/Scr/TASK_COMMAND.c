@@ -35,6 +35,17 @@ _Bool next_change_param = 0, flash_save_flag = 0, usb_msg_flag = 0;
 double x_kp, x_ki, x_kd;
 uint32_t offset_index = 0;
 
+//CMD_listTypedef cmd_param_list[MAX_CMD_PARAM] = {
+//		{"DEFAULT", _default},
+//		{"CLIM", _max_cur},
+//		{"DCTR", _d_ctrl_pi},
+//		{"QCTR", _q_ctrl_pi},
+//		{"SCTR", _speed_ctrl_pi},
+//		{"ACTR", _angle_ctrl_pd},
+//		{"RAO", _rotor_angle_offset},
+//		{"ZO", _steering_zero_offset}
+//};
+
 _Bool get_flash_save_flag (void){
 	return flash_save_flag;
 }
@@ -318,7 +329,7 @@ int cmd_set (char *cmd)
 {
 	BLDC_cmdMotorTypedef motor = _cmd_none;
 	BLDC_cmdModeTypedef mode = _mode_none;
-	BLDC_cmdTypedef cmd_temp = _motor_none;
+	BLDC_cmdParamTypedef cmd_temp = _motor_none;
 	int error_result = 0;
 	uint8_t param_ln = 1;
 	uint32_t val_ln = 0;
@@ -342,7 +353,14 @@ int cmd_set (char *cmd)
 		{
 			offset_index += find_separator (cmd+offset_index, ' ');
 			offset_index += count_separator (cmd+offset_index, ' ');
-			if (str_compare (cmd+offset_index, "CLIM", 4)) cmd_temp = _max_cur;
+//			for (uint32_t i = 0; i < MAX_CMD_PARAM; i++){
+//				uint32_t ln = sizeof(cmd_param_list[i].cmd_str);
+//				if (str_compare (cmd+offset_index, cmd_param_list[i].cmd_str, ln))
+//					cmd_temp = (BLDC_cmdParamTypedef)cmd_param_list[i].action;
+//			}
+
+			if (str_compare (cmd+offset_index, "DEFAULT", 7)) cmd_temp = _default;
+			else if (str_compare (cmd+offset_index, "CLIM", 4)) cmd_temp = _max_cur;
 			else if (str_compare (cmd+offset_index, "DCTR", 4)) cmd_temp = _d_ctrl_pi;
 			else if (str_compare (cmd+offset_index, "QCTR", 4)) cmd_temp = _q_ctrl_pi;
 			else if (str_compare (cmd+offset_index, "SCTR", 4)) cmd_temp = _speed_ctrl_pi;

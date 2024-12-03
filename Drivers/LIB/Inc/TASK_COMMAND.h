@@ -11,11 +11,15 @@
 #include "stdio.h"
 #include "cmsis_os.h"
 
+#define MAX_CMD_PARAM 	8
+#define MAX_CMD_MODE 	3
+#define MAX_CMD_MOTOR 	2
+
 typedef enum
 {
-	_cmd_none, _max_cur, _d_ctrl_pi, _q_ctrl_pi, _speed_ctrl_pi, _angle_ctrl_pd,
+	_cmd_none, _default, _max_cur, _d_ctrl_pi, _q_ctrl_pi, _speed_ctrl_pi, _angle_ctrl_pd,
 	_rotor_angle_offset, _steering_zero_offset
-}BLDC_cmdTypedef;
+}BLDC_cmdParamTypedef;
 
 typedef enum
 {
@@ -30,8 +34,13 @@ typedef enum
 typedef struct{
 	BLDC_cmdMotorTypedef motor;
 	BLDC_cmdModeTypedef mode;
-	BLDC_cmdTypedef cmd;
+	BLDC_cmdParamTypedef cmd;
 }USB_settingTypedef;
+
+typedef struct{
+	char cmd_str[20];
+	uint32_t action;
+}CMD_listTypedef;
 
 _Bool get_flash_save_flag (void);
 void set_flash_save_flag (_Bool state);

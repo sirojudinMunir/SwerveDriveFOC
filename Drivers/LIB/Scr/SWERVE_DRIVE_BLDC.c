@@ -158,7 +158,7 @@ void BLDC_set_speed (double rpm)
 			hbldc1.rpm = 0;
 		}
 		PID_set_konstanta(&hbldc1.hpid_omega, 0.0002, 0.00000002, 0);
-		PID_set_max_value(&hbldc1.hpid_omega, 6.0, 100000000);
+		PID_set_max_value(&hbldc1.hpid_omega, 6.0);
 		hbldc1.hpid_omega.int_error = 0;
 	}
 //	else

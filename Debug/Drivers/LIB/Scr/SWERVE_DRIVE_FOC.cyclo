@@ -1,9 +1,9 @@
 SWERVE_DRIVE_FOC.c:19:6:FOC_init	2
 SWERVE_DRIVE_FOC.c:27:6:BLDC_set_freq	4
 SWERVE_DRIVE_FOC.c:42:6:BLDC_init	3
-SWERVE_DRIVE_FOC.c:86:6:BLDC_get_current	7
-SWERVE_DRIVE_FOC.c:163:6:BLDC_get_current_filter	1
-SWERVE_DRIVE_FOC.c:170:6:BLDC_clark_park_trans	2
-SWERVE_DRIVE_FOC.c:183:6:BLDC_inv_clark_park_trans	2
-SWERVE_DRIVE_FOC.c:199:6:BLDC_spwm	7
-SWERVE_DRIVE_FOC.c:234:6:BLDC_current_control	1
+SWERVE_DRIVE_FOC.c:93:6:BLDC_get_current	7
+SWERVE_DRIVE_FOC.c:170:6:BLDC_get_current_filter	1
+SWERVE_DRIVE_FOC.c:177:6:BLDC_clark_park_trans	2
+SWERVE_DRIVE_FOC.c:190:6:BLDC_inv_clark_park_trans	2
+SWERVE_DRIVE_FOC.c:206:6:BLDC_spwm	7
+SWERVE_DRIVE_FOC.c:239:6:BLDC_current_control	1

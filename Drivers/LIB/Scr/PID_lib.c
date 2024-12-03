@@ -33,13 +33,11 @@ void PID_set_konstanta (PID_HandleTypeDef *hpid, double kp, double ki, double kd
   * @brief  Set maximum value
   * @param  hpid 	pointer to PID_HandleTypeDef structure that contains
   * 		max_mv	maximum manipulated value / output from PID, PI, or PD control
-  * 		max_int_error	limit integral error
   * @retval none
   */
-void PID_set_max_value (PID_HandleTypeDef *hpid, double max_mv, double max_int_error)
+void PID_set_max_value (PID_HandleTypeDef *hpid, double max_mv)
 {
 	hpid->max_mv = max_mv;
-	hpid->max_int_error = max_int_error;
 }
 
 //============================================================================================
