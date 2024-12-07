@@ -17,8 +17,8 @@
 extern _Bool mag_zero_set_flag;
 extern uint8_t usb_tx_buff[300];
 extern uint32_t usb_tx_lenght;
-extern BLDC_HandleTypeDef hbldc1, hbldc2;
-extern USB_settingTypedef usb_setting;
+extern BLDC_HandleTypeDef WHEELED_handler, STEERING_handler;
+extern uint16_t wheel_addr;
 
 extern uint8_t CDC_Transmit_FS(uint8_t* Buf, uint16_t Len);
 
@@ -29,22 +29,44 @@ const osThreadAttr_t command_task_attributes = {
   .priority = (osPriority_t) osPriorityLow1,
 };
 
+USB_settingTypedef usb_setting;
+
 uint8_t usb_tx_buff[300];
 
 _Bool next_change_param = 0, flash_save_flag = 0, usb_msg_flag = 0;
 double x_kp, x_ki, x_kd;
 uint32_t offset_index = 0;
 
-//CMD_listTypedef cmd_param_list[MAX_CMD_PARAM] = {
-//		{"DEFAULT", _default},
-//		{"CLIM", _max_cur},
-//		{"DCTR", _d_ctrl_pi},
-//		{"QCTR", _q_ctrl_pi},
-//		{"SCTR", _speed_ctrl_pi},
-//		{"ACTR", _angle_ctrl_pd},
-//		{"RAO", _rotor_angle_offset},
-//		{"ZO", _steering_zero_offset}
-//};
+CMD_listTypedef cmd_motor_list[] = {
+		{"STR", _steering},
+		{"WLD", _wheeled},
+
+		{"SWERVE", _swerve}
+};
+
+CMD_listTypedef cmd_mode_list[] = {
+		{"SET", _set},
+		{"GET", _get},
+		{"INFO", _info}
+};
+
+CMD_listTypedef cmd_param_list[] = {
+		{"DEFAULT", _default},
+		{"CLIM", _max_cur},
+		{"DCTR", _d_ctrl_pi},
+		{"QCTR", _q_ctrl_pi},
+		{"SCTR", _speed_ctrl_pi},
+		{"ACTR", _angle_ctrl_pd},
+		{"RAO", _rotor_angle_offset},
+		{"ZO", _steering_zero_offset},
+
+		{"ADDR", _addr},
+		{"ANGLE", _steering_angle},
+		{"SPEED", _wheeled_speed},
+};
+
+uint32_t panjang[8];
+
 
 _Bool get_flash_save_flag (void){
 	return flash_save_flag;
@@ -60,6 +82,14 @@ _Bool get_usb_msg_flag (void){
 
 void set_usb_msg_flag (_Bool state){
 	usb_msg_flag = state;
+}
+
+uint32_t length_check (char *str){
+	uint32_t result = 0;
+	for (uint32_t i = 0; str[i] != 0; i++){
+		result++;
+	}
+	return result;
 }
 
 double str2float (char *str, uint8_t ln)
@@ -312,6 +342,10 @@ uint32_t find_separator (char *str, char separator_char){
 	uint32_t separator = 0;
 	for (uint32_t i = 0; str[i] != separator_char; i++){
 		separator++;
+		if (str[i] == 0){
+			separator = 0;
+			break;
+		}
 	}
 	return separator;
 }
@@ -324,6 +358,8 @@ uint32_t count_float_number (char *str){
 	}
 	return count;
 }
+
+
 ///WM SET DCTR = 0.03 0.00012
 int cmd_set (char *cmd)
 {
@@ -338,35 +374,37 @@ int cmd_set (char *cmd)
 	offset_index = 0;
 
 	offset_index += count_separator (cmd, ' ');
-	if (str_compare (cmd+offset_index, "WM", 2)) motor = _wheeled;
-	else if (str_compare (cmd+offset_index, "SM", 2)) motor = _steering;
+	for (uint32_t i = 0; i < MAX_LIST_CMD_MOTOR; i++){
+		uint32_t ln = length_check(cmd_motor_list[i].cmd_str);
+		if (str_compare (cmd+offset_index, cmd_motor_list[i].cmd_str, ln)){
+			motor = cmd_motor_list[i].action;
+			break;
+		}
+	}
 
 	if (motor != _motor_none)
 	{
 		offset_index += find_separator (cmd+offset_index, ' ');
 		offset_index += count_separator (cmd+offset_index, ' ');
-		if (str_compare (cmd+offset_index, "SET", 3)) mode = _set;
-		else if (str_compare (cmd+offset_index, "GET", 3)) mode = _get;
-		else if (str_compare (cmd+offset_index, "INFO", 4)) mode = _info;
+		for (uint32_t i = 0; i < MAX_LIST_CMD_MODE; i++){
+			uint32_t ln = length_check(cmd_mode_list[i].cmd_str);
+			if (str_compare (cmd+offset_index, cmd_mode_list[i].cmd_str, ln)){
+				mode = cmd_mode_list[i].action;
+				break;
+			}
+		}
 
 		if (mode == _set || mode == _get)
 		{
 			offset_index += find_separator (cmd+offset_index, ' ');
 			offset_index += count_separator (cmd+offset_index, ' ');
-//			for (uint32_t i = 0; i < MAX_CMD_PARAM; i++){
-//				uint32_t ln = sizeof(cmd_param_list[i].cmd_str);
-//				if (str_compare (cmd+offset_index, cmd_param_list[i].cmd_str, ln))
-//					cmd_temp = (BLDC_cmdParamTypedef)cmd_param_list[i].action;
-//			}
-
-			if (str_compare (cmd+offset_index, "DEFAULT", 7)) cmd_temp = _default;
-			else if (str_compare (cmd+offset_index, "CLIM", 4)) cmd_temp = _max_cur;
-			else if (str_compare (cmd+offset_index, "DCTR", 4)) cmd_temp = _d_ctrl_pi;
-			else if (str_compare (cmd+offset_index, "QCTR", 4)) cmd_temp = _q_ctrl_pi;
-			else if (str_compare (cmd+offset_index, "SCTR", 4)) cmd_temp = _speed_ctrl_pi;
-			else if (str_compare (cmd+offset_index, "ACTR", 4)) cmd_temp = _angle_ctrl_pd;
-			else if (str_compare (cmd+offset_index, "RAO", 3)) cmd_temp = _rotor_angle_offset;
-			else if (str_compare (cmd+offset_index, "ZO", 2)) cmd_temp = _steering_zero_offset;
+			for (uint32_t i = 0; i < MAX_LIST_CMD_PARAM; i++){
+				uint32_t ln = length_check(cmd_param_list[i].cmd_str);
+				if (str_compare (cmd+offset_index, cmd_param_list[i].cmd_str, ln)){
+					cmd_temp = cmd_param_list[i].action;
+					break;
+				}
+			}
 
 			if (cmd_temp != _cmd_none)
 			{
@@ -425,6 +463,7 @@ int cmd_set (char *cmd)
 								WHEELED_handler.hpid_omega.kp = val[0];
 								WHEELED_handler.hpid_omega.ki = val[1];
 							}
+							else return -2;
 							break;
 						case _angle_ctrl_pd:
 							if (motor == _steering)
@@ -432,6 +471,7 @@ int cmd_set (char *cmd)
 								STEERING_handler.hpid_theta.kp = val[0];
 								STEERING_handler.hpid_theta.kd = val[1];
 							}
+							else return -2;
 							break;
 						case _rotor_angle_offset:
 							if (motor == _steering) STEERING_handler.rotor_offset = val[0];

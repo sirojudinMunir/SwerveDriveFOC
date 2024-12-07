@@ -17,6 +17,7 @@ typedef struct
 			mv, last_us, ts;
 }PID_HandleTypeDef;
 
+void PID_set_time_sampling (PID_HandleTypeDef *hpid, double us);
 void PID_set_konstanta (PID_HandleTypeDef *hpid, double kp, double ki, double kd);
 void PID_set_max_value (PID_HandleTypeDef *hpid, double max_mv);
 double PID_calculate (PID_HandleTypeDef *hpid, double sp, double pv);

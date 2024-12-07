@@ -28,6 +28,7 @@
 #include "stdio.h"
 #include "stdlib.h"
 #include "FLASH_lib.h"
+#include "MAGNETIC_SENSOR_AS5048A.h"
 #include "SWERVE_DRIVE_BLDC.h"
 #include "SWERVE_DRIVE_CAN.h"
 #include "TASK_COMMAND.h"
@@ -44,7 +45,15 @@
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 
+/*PILIH CHANNEL RODA*/
 #define WHEEL_0
+
+/*	1: untuk memasukkan default parameter
+ * 	0: untuk mode normal
+ * */
+#define SET_DEFAULT_PARAM 		0
+
+#define BLDC_CHANNEL NORMAL /*NORAML / SWAP*/
 
 /* USER CODE END PD */
 
@@ -90,28 +99,14 @@ typedef enum
 	_dq_test, _current_test, _torque_test, _speed_test, _angle_test
 }BLDC_TestTypedef;
 
-DLPF_HandleTypeDef i_test[3], battery_read;
-USB_settingTypedef usb_setting;
+DLPF_HandleTypeDef 	i_test[3];
 
-uint32_t cnt = 0, t_test, t_delay = 1000, cnt_ovf = 0,
-		mag_zero_cal_t,
-		adc_battery;
-uint16_t encd_data_rx;
-uint8_t spi_rx[2];
-float raw_angle, last_raw_angle, m2_angle = 0, hrpm,
-		a = 0, b = 0, cm_test = 0, sector_test = 0, rpm_trsh = 25;
+BLDC_HandleTypeDef 	WHEELED_handler,
+					STEERING_handler;
 
-double  steer_angle_offset = 0;
-
-_Bool error_flag, read_ready = 0, flag = 0, wheel_state = 0, update_rpm_flag = 0,
-		mag_zero_set_flag = 0, mag_cal_mode = 0,
-		steer_call_ready = 0, null_rpm = 0,
-		lifter_ok_flag = 0;
-
-int32_t count_hall, raw_angle_ovf = 0, usb_tx_lenght;
-_Bool ctrl_h= 0, bldc2_start_calibrate = 0;
-
-uint8_t cmd_test = 0;
+_Bool 		read_ready = 0,
+			wheel_state = 0,
+			steer_call_ready = 0;
 
 /* USER CODE END PV */
 
@@ -142,78 +137,6 @@ extern uint8_t CDC_Transmit_FS(uint8_t* Buf, uint16_t Len);
 
 //==========================================================================================
 
-/*
- * @brief	AS5048A_send_data
- * 			fungsi untuk mengirim comamnd ke sensor magnetic encoder AS5048A via SPI
- * @param	par		parity
- * 			rw		read/write
- * 			addr	alamat
- * @retval	HAL status
- */
-HAL_StatusTypeDef AS5048A_send_data (_Bool par, _Bool rw, uint16_t addr)
-{
-	HAL_StatusTypeDef status;
-	uint8_t data[2];
-	data[0] = (par << 7) | (rw << 6) | (addr >> 8);
-	data[1] = addr & 0xff;
-	SPI_CS_GPIO_Port->BSRR = SPI_CS_Pin<<16;
-	status = HAL_SPI_TransmitReceive_DMA (&hspi1, data, spi_rx, 2);
-	return status;
-}
-
-/*
- * @brief	battery_read_init
- * 			inisialisasi pembacaan baterai
- * @param	None
- * @retval	None
- */
-void battery_read_init (void)
-{
-	HAL_ADC_Start_DMA(&hadc1, &adc_battery, 1);
-	dlpf_set_alpha(&battery_read, 0.01);
-}
-
-/*
- * @brief	read_battery
- * 			fungsi ini digunakan untuk kalkulasi pembacaan baterai dalam satuan Volt
- * @param	None
- * @retval	tegangan baterai
- */
-double read_battery (void)
-{
-	double v_adc, v_bat;
-	dlpf_get_result(&battery_read, adc_battery);
-	v_adc = (double)battery_read.result / 4095.0 * 3.3;
-	v_bat = v_adc * 11.0;
-	return v_bat;
-}
-
-//============================================================================================
-
-void zero_steer ()
-{
-	float angle_steer_call = angle_sens;
-	uint32_t t_steer_call = HAL_GetTick(), t_validate;
-	t_validate = HAL_GetTick();
-	wheel_state = 1;
-	while (wheel_state)
-	{
-		if (HAL_GetTick() != t_steer_call)
-		{
-		  t_steer_call = HAL_GetTick();
-		  angle_steer_call+=0.1;
-		}
-		if (!steer_call_ready)
-		{
-		  if (HAL_GetTick() - t_validate > 1000) steer_call_ready = 1;
-		}
-		BLDC_set_angle (angle_steer_call);
-		BLDC_set_speed (0);
-	}
-}
-
-//============================================================================================
-
 void wheel_init ()
 {
 #ifdef WHEEL_X
@@ -242,9 +165,9 @@ void wheel_init ()
 #endif
 #endif
 
-	hbldc1.channel = _BLDC1;
-	hbldc2.channel = _BLDC2;
-	hbldc1.last_sector_theta = hbldc1.sector_theta;
+	WHEELED_handler.channel = BLDC_WHEELED;
+	STEERING_handler.channel = BLDC_STEERING;
+	WHEELED_handler.last_sector_theta = WHEELED_handler.sector_theta;
 
 	CAN_filter_config ();
 	HAL_CAN_Start(&hcan1);
@@ -252,76 +175,6 @@ void wheel_init ()
 	TxHeader.IDE = CAN_ID_STD;
 	TxHeader.RTR = CAN_RTR_DATA;
 
-}
-
-//============================================================================================
-
-void HAL_ADCEx_InjectedConvCpltCallback(ADC_HandleTypeDef* hadc)
-{
-	if (hadc->Instance == WHEELED_ADC)
-	{
-		BLDC_get_current (&WHEELED_handler);
-		BLDC_set_speed (data_rpm);//data_rpm
-	}
-	if (hadc->Instance == STEERING_ADC)
-	{
-		BLDC_get_current (&STEERING_handler);
-		BLDC_set_angle (data_angle);//data_angle
-	}
-}
-
-void HAL_TIM_IC_CaptureCallback(TIM_HandleTypeDef *htim)
-{
-	if (htim->Instance == TIM5)
-	{
-		if(htim->Channel == HAL_TIM_ACTIVE_CHANNEL_1)
-		{
-			BLDC_get_rpm (&hbldc1);
-			BLDC_get_sector (&hbldc1);
-			BLDC_rpm_sens (&hbldc1);
-			hbldc1.zero_det_t = HAL_GetTick();
-		}
-	}
-}
-
-void HAL_SPI_TxRxCpltCallback(SPI_HandleTypeDef *hspi)
-{
-	if (hspi->Instance == SPI1)
-	{
-		encd_data_rx = spi_rx[0] << 8 | spi_rx[1];
-		error_flag = (encd_data_rx>>14) & 1;
-		if (!error_flag)
-		{
-			uint16_t val = (encd_data_rx & (0x3fff))>>0;//0
-//			raw_angle = val * 720.0 / 1023.0;
-			raw_angle = (float)val * 720.0 / (float)0x3fff;//1023.0 //0x3fff
-			if (raw_angle - last_raw_angle < -300)
-			{
-				raw_angle_ovf++;
-			}
-			else if (raw_angle - last_raw_angle > 300)
-			{
-				raw_angle_ovf--;
-			}
-			angle_sens = (raw_angle + (double)raw_angle_ovf * 360.0)*-0.1172108178559791463 - steer_angle_offset;
-			last_raw_angle = raw_angle;
-		}
-		TIM7->CNT = 0;
-		read_ready = 1;
-		SPI_CS_GPIO_Port->BSRR = SPI_CS_Pin;
-	}
-}
-
-void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
-{
-	if (GPIO_Pin == Z_STEER_DET_Pin)
-	{
-		if (wheel_state && steer_call_ready)
-		{
-			steer_angle_offset = angle_sens + zero_offset;
-			wheel_state = 0;
-		}
-	}
 }
 
 //==================================================================================
@@ -373,13 +226,6 @@ int main(void)
   FOC_init ();
   wheel_init ();
 
-  dlpf_set_alpha(&i_test[0], 0.01);
-  dlpf_set_alpha(&i_test[1], 0.01);
-  dlpf_set_alpha(&i_test[2], 0.01);
-
-  BLDC_init (&hbldc1);
-  BLDC_init (&hbldc2);
-
   HAL_Delay(200);
   FLASH_set_sector_addrs (FLASH_SECTOR_11, 0x080E0000);
 #if SET_DEFAULT_PARAM
@@ -388,9 +234,17 @@ int main(void)
 #else
   flash_get_data ();
 #endif
-  LED_BUILTIN_GPIO_Port->BSRR = LED_BUILTIN_Pin;
 
-  BLDC_get_sector (&hbldc1);
+  LED_BUILTIN_GPIO_Port->BSRR = LED_BUILTIN_Pin;
+  battery_read_init ();
+  BLDC_init (&WHEELED_handler);
+  BLDC_init (&STEERING_handler);
+
+  dlpf_set_alpha(&i_test[0], 0.01);
+  dlpf_set_alpha(&i_test[1], 0.01);
+  dlpf_set_alpha(&i_test[2], 0.01);
+
+  BLDC_get_sector (&WHEELED_handler);
 
   HAL_TIM_Base_Start_IT(&htim3);
   HAL_TIM_Base_Start_IT(&htim4);
@@ -399,15 +253,10 @@ int main(void)
   AS5048A_send_data (1, 1, 0x3fff);
   BLDC_spwm (&STEERING_handler);
   BLDC_spwm (&WHEELED_handler);
-//  BLDC_beep(&hbldc2, 3136, 100);
-//  HAL_Delay(100);
-//  BLDC_beep(&hbldc2, 3136, 100);
-//  HAL_Delay(100);
-//  BLDC_beep(&hbldc2, 3136, 100);
-//  HAL_Delay(100);
 
 //  zero_steer ();
-  data_rpm = 100;
+//  data_rpm = 300;
+
   /* USER CODE END 2 */
 
   /* Init scheduler */
@@ -431,9 +280,9 @@ int main(void)
 
   /* Create the thread(s) */
   /* creation of defaultTask */
-//  defaultTaskHandle = osThreadNew(StartDefaultTask, NULL, &defaultTask_attributes);
   blink_task_handle = osThreadNew(start_blink_task, NULL, &blink_task_attributes);
   command_task_handle = osThreadNew(start_command_task, NULL, &command_task_attributes);
+  defaultTaskHandle = osThreadNew(StartDefaultTask, NULL, &defaultTask_attributes);
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
@@ -450,12 +299,6 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-//	  if (mag_zero_set_flag)
-//	  {
-//		  mag_zero_set_flag = 0;
-//		  BLDC2_zero_cal ();
-//	  }
-
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -1368,10 +1211,27 @@ void StartDefaultTask(void *argument)
 {
   /* init code for USB_DEVICE */
   MX_USB_DEVICE_Init();
+	float angle_steer_call = angle_sens;
+	uint32_t t_validate = HAL_GetTick();
+
+	wheel_state = 1;
   /* USER CODE BEGIN 5 */
   /* Infinite loop */
   for(;;)
   {
+	if (wheel_state){
+		if (!steer_call_ready){
+		  if (HAL_GetTick() - t_validate > 1000) steer_call_ready = 1;
+		}
+		angle_steer_call+=0.02;
+		steering_motor_set_angle (angle_steer_call);
+	}
+	else{
+		/*TEST PARAMETERS SPEED & ANGLE*/
+		wheeled_motor_set_speed (0);
+		steering_motor_set_angle (0);
+		/*TEST PARAMETERS SPEED & ANGLE*/
+	}
     osDelay(1);
   }
   /* USER CODE END 5 */
@@ -1397,7 +1257,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 
 	if (htim->Instance == TIM3)
 	{
-		cnt_ovf++;
+
 	}
 	if (htim->Instance == TIM7)
 	{

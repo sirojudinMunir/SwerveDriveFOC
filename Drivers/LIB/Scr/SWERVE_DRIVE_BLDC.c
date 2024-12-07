@@ -10,16 +10,40 @@
 #include "FLASH_lib.h"
 #include "TASK_COMMAND.h"
 
+extern ADC_HandleTypeDef hadc1;
 extern float raw_angle;
+extern BLDC_HandleTypeDef WHEELED_handler, STEERING_handler;
 extern uint8_t CDC_Transmit_FS(uint8_t* Buf, uint16_t Len);
 
-uint32_t usb_tx_t;
-float angle_sector;
-double angle_sens, zero_offset = 0,
-		mag_angle_offset;
-int16_t hall_sens_count = 0;
+extern float data_angle, data_rpm;
 
-BLDC_HandleTypeDef hbldc1, hbldc2;
+extern _Bool 	read_ready,
+				wheel_state,
+				steer_call_ready;
+
+DLPF_HandleTypeDef battery_read;
+
+double  	steer_angle_offset = 0;
+
+
+uint32_t 	usb_tx_t,
+			adc_battery;
+
+float 		angle_sector;
+
+double 		angle_sens, zero_offset = 0,
+			mag_angle_offset;
+
+int16_t 	hall_sens_count = 0;
+
+
+void wheeled_motor_set_speed (float speed){
+	data_rpm = speed;
+}
+
+void steering_motor_set_angle (float angle){
+	data_angle = angle;
+}
 
 void BLDC_beep (BLDC_HandleTypeDef *hbldc, uint32_t freq, uint32_t time_delay)
 {
@@ -121,11 +145,11 @@ void BLDC_rpm_sens (BLDC_HandleTypeDef *hbldc)
 
 void BLDC_get_rpm (BLDC_HandleTypeDef *hbldc)
 {
-	if (hbldc->channel == _BLDC1)
+	if (hbldc->channel == BLDC_WHEELED)
 	{
 		hbldc->rpm_abs = 60.0 / ((float)TIM5->CCR1 * 0.00012);
 	}
-	else if (hbldc->channel == _BLDC2)
+	else if (hbldc->channel == BLDC_STEERING)
 	{
 		//----------------------
 	}
@@ -133,91 +157,89 @@ void BLDC_get_rpm (BLDC_HandleTypeDef *hbldc)
 
 //============================================================================================
 
-void BLDC_set_speed (double rpm)
+void BLDC_speed_control (void)
 {
-	float phase_shft = 90, id_sp = 0;
-	double  t_hall = 0, rpm_abs = fabs(rpm);
+	float id_sp = 0;
+	double  t_hall = 0, rpm_abs = fabs(data_rpm);
 	uint32_t tcnt = TIM5->CNT;
 
-	if (hbldc1.rpm != 0) t_hall = (60.0/hbldc1.rpm)/60.0 * 2000000.0;//2000000.0
+	if (WHEELED_handler.rpm != 0) t_hall = (60.0/WHEELED_handler.rpm)/60.0 * 2000000.0;//2000000.0
 	if (tcnt < fabs(t_hall))
 	{
-		hbldc1.angle_estimation = (double)tcnt / t_hall * 60.0;
-//		hbldc1.new_sector_theta = hbldc1.sector_theta + hbldc1.angle_estimation;
-		hbldc1.new_sector_theta = hbldc1.sector_theta;
+		WHEELED_handler.angle_estimation = (double)tcnt / t_hall * 60.0;
+		WHEELED_handler.new_sector_theta = WHEELED_handler.sector_theta + WHEELED_handler.angle_estimation;
 	}
 	else
 	{
-//		hbldc1.rpm = 0;
-		hbldc1.new_sector_theta = hbldc1.sector_theta;
+//		WHEELED_handler.rpm = 0;
+		WHEELED_handler.new_sector_theta = WHEELED_handler.sector_theta;
 	}
 	if (rpm_abs < 0.001)
 	{
 		if (tcnt > fabs(t_hall))
 		{
-			hbldc1.rpm = 0;
+			WHEELED_handler.rpm = 0;
 		}
-		PID_set_konstanta(&hbldc1.hpid_omega, 0.0002, 0.00000002, 0);
-		PID_set_max_value(&hbldc1.hpid_omega, 6.0);
-		hbldc1.hpid_omega.int_error = 0;
+		WHEELED_handler.hpid_omega.int_error = 0;
 	}
-//	else
-//	{
-//		if (tcnt > (fabs(t_hall) + 10))//100000
-//		{
-//			hbldc1.rpm = 0;
-//		}
-//		if (rpm_abs <= 100) PID_set_konstanta(&hbldc1.hpid_omega, 0.005, 0.0000001, 0);
-//		else if (rpm_abs > 100 && rpm_abs <= 200) PID_set_konstanta(&hbldc1.hpid_omega, 0.01, 0.0000001, 0);
-//		else if (rpm_abs > 200 && rpm_abs <= 300) PID_set_konstanta(&hbldc1.hpid_omega, 0.01, 0.0000001, 0);
-//		else if (rpm_abs > 300 && rpm_abs <= 400) PID_set_konstanta(&hbldc1.hpid_omega, 0.015, 0.0000001, 0);
-//		else if (rpm_abs > 400 && rpm_abs <= 500) PID_set_konstanta(&hbldc1.hpid_omega, 0.02, 0.0000001, 0);
-//		else
-//		{
-//			PID_set_konstanta(&hbldc1.hpid_omega, 0.02, 0.0000001, 0);
-////			id_sp = -2.0;
-//		}
-//		PID_set_max_value(&hbldc1.hpid_omega, 6.0, 60000000);
-//	}
 
-	hbldc1.c_loop++;
-	if (hbldc1.c_loop >= 10)
+	WHEELED_handler.c_loop++;
+	if (WHEELED_handler.c_loop >= BLDC_CURRENT_CTRL_LOOP)
 	{
-		hbldc1.c_loop = 0;
-		PID_calculate(&hbldc1.hpid_omega, rpm, hbldc1.rpm);
+		WHEELED_handler.c_loop = 0;
+		PI_calculate(&WHEELED_handler.hpid_omega, data_rpm, WHEELED_handler.rpm);
 	}
-	if (hbldc1.hpid_omega.mv < 0) phase_shft = -90;
-	BLDC_get_current_filter(&hbldc1);
-	BLDC_clark_park_trans(&hbldc1, hbldc1.new_sector_theta+phase_shft,
-		  hbldc1.hdlpf_current_filt[_u].result,
-		  hbldc1.hdlpf_current_filt[_v].result,
-		  hbldc1.hdlpf_current_filt[_w].result);
-	PID_calculate(&hbldc1.hpid_id, id_sp, hbldc1.id_result);
-	PID_calculate(&hbldc1.hpid_iq, fabs(hbldc1.hpid_omega.mv), hbldc1.iq_result);
-	BLDC_inv_clark_park_trans(&hbldc1, hbldc1.new_sector_theta+phase_shft, hbldc1.hpid_id.mv, hbldc1.hpid_iq.mv);
-	BLDC_spwm(&hbldc1);
+	BLDC_get_current_filter(&WHEELED_handler);
+	BLDC_clark_park_trans(&WHEELED_handler, WHEELED_handler.new_sector_theta+90,
+		  WHEELED_handler.hdlpf_current_filt[_u].result,
+		  WHEELED_handler.hdlpf_current_filt[_v].result,
+		  WHEELED_handler.hdlpf_current_filt[_w].result);
+	PI_calculate(&WHEELED_handler.hpid_id, id_sp, WHEELED_handler.id_result);
+	PI_calculate(&WHEELED_handler.hpid_iq, WHEELED_handler.hpid_omega.mv, WHEELED_handler.iq_result);
+	BLDC_inv_clark_park_trans(&WHEELED_handler, WHEELED_handler.new_sector_theta+90, WHEELED_handler.hpid_id.mv, WHEELED_handler.hpid_iq.mv);
+	BLDC_spwm(&WHEELED_handler);
 }
 
-void BLDC_set_angle (float deg)
+void BLDC_angle_control (void)
 {
-	float phase_shift = -90;
-	hbldc2.c_loop++;
-	if (hbldc2.c_loop >= 10)
+	STEERING_handler.c_loop++;
+	if (STEERING_handler.c_loop >= BLDC_CURRENT_CTRL_LOOP)
 	{
-		hbldc2.c_loop = 0;
-		PID_calculate(&hbldc2.hpid_theta, deg, angle_sens);
+		STEERING_handler.c_loop = 0;
+		PD_calculate(&STEERING_handler.hpid_theta, data_angle, angle_sens);
 	}
-	if (hbldc2.hpid_theta.mv < 0) phase_shift = 90.0;
 	angle_sector = (raw_angle+mag_angle_offset) * 11.0;
-	BLDC_get_current_filter(&hbldc2);
-	BLDC_clark_park_trans(&hbldc2, angle_sector+phase_shift,
-		  hbldc2.hdlpf_current_filt[_u].result,
-		  hbldc2.hdlpf_current_filt[_v].result,
-		  hbldc2.hdlpf_current_filt[_w].result);
-	PID_calculate(&hbldc2.hpid_id, 0, hbldc2.id_result);
-	PID_calculate(&hbldc2.hpid_iq, fabs(hbldc2.hpid_theta.mv), hbldc2.iq_result);
-	BLDC_inv_clark_park_trans(&hbldc2, angle_sector+phase_shift, hbldc2.hpid_id.mv, hbldc2.hpid_iq.mv);
-	BLDC_spwm(&hbldc2);
+	BLDC_get_current_filter(&STEERING_handler);
+	BLDC_clark_park_trans(&STEERING_handler, angle_sector+90,
+		  STEERING_handler.hdlpf_current_filt[_u].result,
+		  STEERING_handler.hdlpf_current_filt[_v].result,
+		  STEERING_handler.hdlpf_current_filt[_w].result);
+	PI_calculate(&STEERING_handler.hpid_id, 0, STEERING_handler.id_result);
+	PI_calculate(&STEERING_handler.hpid_iq, -STEERING_handler.hpid_theta.mv, STEERING_handler.iq_result);
+	BLDC_inv_clark_park_trans(&STEERING_handler, angle_sector+90, STEERING_handler.hpid_id.mv, STEERING_handler.hpid_iq.mv);
+	BLDC_spwm(&STEERING_handler);
+}
+
+void zero_steer (void)
+{
+	float angle_steer_call = angle_sens;
+	uint32_t t_steer_call = HAL_GetTick(), t_validate;
+	t_validate = HAL_GetTick();
+	wheel_state = 1;
+	while (wheel_state)
+	{
+		if (HAL_GetTick() - t_steer_call >= 1)
+		{
+		  t_steer_call = HAL_GetTick();
+		  angle_steer_call+=0.01;
+		}
+		if (!steer_call_ready)
+		{
+		  if (HAL_GetTick() - t_validate > 1000) steer_call_ready = 1;
+		}
+		data_angle = angle_steer_call;
+	}
+	data_angle = 0;
 }
 
 //pengujian1:
@@ -242,18 +264,18 @@ void BLDC_calibrate (void)
 			case 4: a_sp = -10; break;
 			}
 		}
-		BLDC_set_angle (a_sp);
+		steering_motor_set_angle (a_sp);
 		if (HAL_GetTick() != usb_tx_t)
 		{
 		  usb_tx_t = HAL_GetTick();
 //		  uint32_t ln = sprintf ((char*)usb_tx_buff, "%.3f %.3f %.3f\n",
-//				  hbldc2.hdlpf_current_filt[_u].result*1000,
-//				  hbldc2.hdlpf_current_filt[_v].result*1000,
-//				  hbldc2.hdlpf_current_filt[_w].result*1000
+//				  STEERING_handler.hdlpf_current_filt[_u].result*1000,
+//				  STEERING_handler.hdlpf_current_filt[_v].result*1000,
+//				  STEERING_handler.hdlpf_current_filt[_w].result*1000
 //				  );
 		  uint32_t ln = sprintf ((char*)usb_tx_buff, "%.3f %.3f\n",
 				  a_sp,angle_sens
-//				  hbldc2.id_result*1000, hbldc2.iq_result*1000
+//				  STEERING_handler.id_result*1000, STEERING_handler.iq_result*1000
 				  );
 		  CDC_Transmit_FS (usb_tx_buff, ln);
 		  ////
@@ -263,14 +285,14 @@ void BLDC_calibrate (void)
 
 void zero_mosfet (void)
 {
-	hbldc1.ia = 0;
-	hbldc1.ib = 0;
-	hbldc1.ic = 0;
-	hbldc2.ia = 0;
-	hbldc2.ib = 0;
-	hbldc2.ic = 0;
-	BLDC_spwm(&hbldc1);
-	BLDC_spwm(&hbldc2);
+	WHEELED_handler.ia = 0;
+	WHEELED_handler.ib = 0;
+	WHEELED_handler.ic = 0;
+	STEERING_handler.ia = 0;
+	STEERING_handler.ib = 0;
+	STEERING_handler.ic = 0;
+	BLDC_spwm(&WHEELED_handler);
+	BLDC_spwm(&STEERING_handler);
 }
 
 void BLDC2_zero_cal (void)
@@ -279,8 +301,8 @@ void BLDC2_zero_cal (void)
 	uint32_t time = HAL_GetTick();
 	while (HAL_GetTick() - time < 1000)
 	{
-		BLDC_inv_clark_park_trans(&hbldc2, 0, 0, 0.4);
-		BLDC_spwm(&hbldc2);
+		BLDC_inv_clark_park_trans(&STEERING_handler, 0, 0, 0.4);
+		BLDC_spwm(&STEERING_handler);
 		mag_angle_offset = raw_angle;
 	}
 	zero_mosfet ();
@@ -291,3 +313,85 @@ void BLDC2_zero_cal (void)
 	CDC_Transmit_FS (usb_tx_buff, ln);
 	while (1) ;
 }
+
+/*
+ * @brief	battery_read_init
+ * 			inisialisasi pembacaan baterai
+ * @param	None
+ * @retval	None
+ */
+void battery_read_init (void)
+{
+//	HAL_ADC_Start_DMA(&hadc1, &adc_battery, 1);
+	dlpf_set_alpha(&battery_read, 0.01);
+}
+
+/*
+ * @brief	read_battery
+ * 			fungsi ini digunakan untuk kalkulasi pembacaan baterai dalam satuan Volt
+ * @param	None
+ * @retval	tegangan baterai
+ */
+double read_battery (void)
+{
+	double v_adc, v_bat;
+	HAL_ADC_Start(&hadc1);
+	HAL_ADC_PollForConversion(&hadc1, 1000);
+	adc_battery = HAL_ADC_GetValue(&hadc1);
+	HAL_ADC_Stop(&hadc1);
+	dlpf_get_result(&battery_read, adc_battery);
+	v_adc = (double)battery_read.result / 4095.0 * 3.3;
+	v_bat = v_adc * 11.0;
+	return v_bat;
+}
+
+/*
+ * CALLBACK ADC
+ */
+void HAL_ADCEx_InjectedConvCpltCallback(ADC_HandleTypeDef* hadc)
+{
+	if (hadc->Instance == WHEELED_ADC)
+	{
+		BLDC_get_current (&WHEELED_handler);
+		BLDC_speed_control ();
+	}
+	if (hadc->Instance == STEERING_ADC)
+	{
+		BLDC_get_current (&STEERING_handler);
+		BLDC_angle_control ();
+	}
+}
+
+/*
+ * CALLBACK HALL SENSOR
+ */
+void HAL_TIM_IC_CaptureCallback(TIM_HandleTypeDef *htim)
+{
+	if (htim->Instance == TIM5)
+	{
+		if(htim->Channel == HAL_TIM_ACTIVE_CHANNEL_1)
+		{
+			BLDC_get_rpm (&WHEELED_handler);
+			BLDC_get_sector (&WHEELED_handler);
+			BLDC_rpm_sens (&WHEELED_handler);
+			WHEELED_handler.zero_det_t = HAL_GetTick();
+		}
+	}
+}
+
+/*
+ * CALLBACK EXTI
+ */
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
+{
+	if (GPIO_Pin == Z_STEER_DET_Pin)
+	{
+		if (wheel_state && steer_call_ready)
+		{
+			steer_angle_offset = angle_sens + zero_offset;
+			wheel_state = 0;
+			data_angle = 0;
+		}
+	}
+}
+

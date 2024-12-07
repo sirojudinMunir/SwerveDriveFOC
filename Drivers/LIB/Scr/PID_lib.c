@@ -12,6 +12,11 @@ double ts;
 
 //============================================================================================
 
+void PID_set_time_sampling (PID_HandleTypeDef *hpid, double us)
+{
+	hpid->ts = us;
+}
+
 /**
   * @brief  Add value to PID constants
   * @param  hpid 	pointer to PID_HandleTypeDef structure that contains
@@ -51,17 +56,13 @@ void PID_set_max_value (PID_HandleTypeDef *hpid, double max_mv)
   */
 double PID_calculate (PID_HandleTypeDef *hpid, double sp, double pv)
 {
-	double result = 0, integral_temp, dt = 0.0001;
-
-	double us = get_us ();
-	hpid->ts = us - hpid->last_us;
-	hpid->last_us = us;
+	double result = 0, integral_temp;
 
 	hpid->error = sp - pv;
 	hpid->P = hpid->error * hpid->kp;
-	hpid->D = ((hpid->error - hpid->last_error) / dt) * hpid->kd;
+	hpid->D = ((hpid->error - hpid->last_error) / hpid->ts) * hpid->kd;
 
-	integral_temp = hpid->int_error + (hpid->error * dt);
+	integral_temp = hpid->int_error + (hpid->error * hpid->ts);
 	hpid->I = integral_temp * hpid->ki;
 
 	result = hpid->P + hpid->I + hpid->D;
@@ -95,18 +96,31 @@ double PID_calculate (PID_HandleTypeDef *hpid, double sp, double pv)
   */
 double PI_calculate (PID_HandleTypeDef *hpid, double sp, double pv)
 {
-	double result;
+	double result = 0, integral_temp;
+
 	hpid->error = sp - pv;
 	hpid->P = hpid->error * hpid->kp;
-	hpid->int_error += hpid->error;
-	if (hpid->int_error > hpid->max_int_error) hpid->int_error = hpid->max_int_error;
-	else if (hpid->int_error < -hpid->max_int_error) hpid->int_error = -hpid->max_int_error;
-	hpid->I = hpid->int_error * hpid->ki;
-	hpid->last_error = hpid->error;
+
+	integral_temp = hpid->int_error + (hpid->error * hpid->ts);
+	hpid->I = integral_temp * hpid->ki;
+
 	result = hpid->P + hpid->I;
-	if (result > hpid->max_mv) result = hpid->max_mv;
-	else if (result < -hpid->max_mv) result = -hpid->max_mv;
+
+	if (result >= -hpid->max_mv && result <= hpid->max_mv){
+		hpid->int_error = integral_temp;
+	}
+	else{
+		if (result > hpid->max_mv){
+			result = hpid->max_mv;
+		}
+		else if (result < -hpid->max_mv){
+			result = -hpid->max_mv;
+		}
+	}
+
 	hpid->mv = result;
+	hpid->last_error = hpid->error;
+
 	return result;
 }
 
@@ -121,15 +135,24 @@ double PI_calculate (PID_HandleTypeDef *hpid, double sp, double pv)
   */
 double PD_calculate (PID_HandleTypeDef *hpid, double sp, double pv)
 {
-	double result;
+	double result = 0;
+
 	hpid->error = sp - pv;
 	hpid->P = hpid->error * hpid->kp;
-	hpid->D = (hpid->error - hpid->last_error) * hpid->kd;
-	hpid->last_error = hpid->error;
-	result = hpid->P + hpid->D;
-	if (result > hpid->max_mv) result = hpid->max_mv;
-	else if (result < -hpid->max_mv) result = -hpid->max_mv;
+	hpid->D = ((hpid->error - hpid->last_error) / hpid->ts) * hpid->kd;
+
+	result = hpid->P + hpid->I + hpid->D;
+
+	if (result > hpid->max_mv){
+		result = hpid->max_mv;
+	}
+	else if (result < -hpid->max_mv){
+		result = -hpid->max_mv;
+	}
+
 	hpid->mv = result;
+	hpid->last_error = hpid->error;
+
 	return result;
 }
 

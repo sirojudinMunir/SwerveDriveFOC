@@ -7,6 +7,7 @@
 C_SRCS += \
 ../Drivers/LIB/Scr/DLPF_lib.c \
 ../Drivers/LIB/Scr/FLASH_lib.c \
+../Drivers/LIB/Scr/MAGNETIC_SENSOR_AS5048A.c \
 ../Drivers/LIB/Scr/PID_lib.c \
 ../Drivers/LIB/Scr/SWERVE_DRIVE_BLDC.c \
 ../Drivers/LIB/Scr/SWERVE_DRIVE_CAN.c \
@@ -17,6 +18,7 @@ C_SRCS += \
 OBJS += \
 ./Drivers/LIB/Scr/DLPF_lib.o \
 ./Drivers/LIB/Scr/FLASH_lib.o \
+./Drivers/LIB/Scr/MAGNETIC_SENSOR_AS5048A.o \
 ./Drivers/LIB/Scr/PID_lib.o \
 ./Drivers/LIB/Scr/SWERVE_DRIVE_BLDC.o \
 ./Drivers/LIB/Scr/SWERVE_DRIVE_CAN.o \
@@ -27,6 +29,7 @@ OBJS += \
 C_DEPS += \
 ./Drivers/LIB/Scr/DLPF_lib.d \
 ./Drivers/LIB/Scr/FLASH_lib.d \
+./Drivers/LIB/Scr/MAGNETIC_SENSOR_AS5048A.d \
 ./Drivers/LIB/Scr/PID_lib.d \
 ./Drivers/LIB/Scr/SWERVE_DRIVE_BLDC.d \
 ./Drivers/LIB/Scr/SWERVE_DRIVE_CAN.d \
@@ -42,7 +45,7 @@ Drivers/LIB/Scr/%.o Drivers/LIB/Scr/%.su Drivers/LIB/Scr/%.cyclo: ../Drivers/LIB
 clean: clean-Drivers-2f-LIB-2f-Scr
 
 clean-Drivers-2f-LIB-2f-Scr:
-	-$(RM) ./Drivers/LIB/Scr/DLPF_lib.cyclo ./Drivers/LIB/Scr/DLPF_lib.d ./Drivers/LIB/Scr/DLPF_lib.o ./Drivers/LIB/Scr/DLPF_lib.su ./Drivers/LIB/Scr/FLASH_lib.cyclo ./Drivers/LIB/Scr/FLASH_lib.d ./Drivers/LIB/Scr/FLASH_lib.o ./Drivers/LIB/Scr/FLASH_lib.su ./Drivers/LIB/Scr/PID_lib.cyclo ./Drivers/LIB/Scr/PID_lib.d ./Drivers/LIB/Scr/PID_lib.o ./Drivers/LIB/Scr/PID_lib.su ./Drivers/LIB/Scr/SWERVE_DRIVE_BLDC.cyclo ./Drivers/LIB/Scr/SWERVE_DRIVE_BLDC.d ./Drivers/LIB/Scr/SWERVE_DRIVE_BLDC.o ./Drivers/LIB/Scr/SWERVE_DRIVE_BLDC.su ./Drivers/LIB/Scr/SWERVE_DRIVE_CAN.cyclo ./Drivers/LIB/Scr/SWERVE_DRIVE_CAN.d ./Drivers/LIB/Scr/SWERVE_DRIVE_CAN.o ./Drivers/LIB/Scr/SWERVE_DRIVE_CAN.su ./Drivers/LIB/Scr/SWERVE_DRIVE_FOC.cyclo ./Drivers/LIB/Scr/SWERVE_DRIVE_FOC.d ./Drivers/LIB/Scr/SWERVE_DRIVE_FOC.o ./Drivers/LIB/Scr/SWERVE_DRIVE_FOC.su ./Drivers/LIB/Scr/TASK_BLINK.cyclo ./Drivers/LIB/Scr/TASK_BLINK.d ./Drivers/LIB/Scr/TASK_BLINK.o ./Drivers/LIB/Scr/TASK_BLINK.su ./Drivers/LIB/Scr/TASK_COMMAND.cyclo ./Drivers/LIB/Scr/TASK_COMMAND.d ./Drivers/LIB/Scr/TASK_COMMAND.o ./Drivers/LIB/Scr/TASK_COMMAND.su
+	-$(RM) ./Drivers/LIB/Scr/DLPF_lib.cyclo ./Drivers/LIB/Scr/DLPF_lib.d ./Drivers/LIB/Scr/DLPF_lib.o ./Drivers/LIB/Scr/DLPF_lib.su ./Drivers/LIB/Scr/FLASH_lib.cyclo ./Drivers/LIB/Scr/FLASH_lib.d ./Drivers/LIB/Scr/FLASH_lib.o ./Drivers/LIB/Scr/FLASH_lib.su ./Drivers/LIB/Scr/MAGNETIC_SENSOR_AS5048A.cyclo ./Drivers/LIB/Scr/MAGNETIC_SENSOR_AS5048A.d ./Drivers/LIB/Scr/MAGNETIC_SENSOR_AS5048A.o ./Drivers/LIB/Scr/MAGNETIC_SENSOR_AS5048A.su ./Drivers/LIB/Scr/PID_lib.cyclo ./Drivers/LIB/Scr/PID_lib.d ./Drivers/LIB/Scr/PID_lib.o ./Drivers/LIB/Scr/PID_lib.su ./Drivers/LIB/Scr/SWERVE_DRIVE_BLDC.cyclo ./Drivers/LIB/Scr/SWERVE_DRIVE_BLDC.d ./Drivers/LIB/Scr/SWERVE_DRIVE_BLDC.o ./Drivers/LIB/Scr/SWERVE_DRIVE_BLDC.su ./Drivers/LIB/Scr/SWERVE_DRIVE_CAN.cyclo ./Drivers/LIB/Scr/SWERVE_DRIVE_CAN.d ./Drivers/LIB/Scr/SWERVE_DRIVE_CAN.o ./Drivers/LIB/Scr/SWERVE_DRIVE_CAN.su ./Drivers/LIB/Scr/SWERVE_DRIVE_FOC.cyclo ./Drivers/LIB/Scr/SWERVE_DRIVE_FOC.d ./Drivers/LIB/Scr/SWERVE_DRIVE_FOC.o ./Drivers/LIB/Scr/SWERVE_DRIVE_FOC.su ./Drivers/LIB/Scr/TASK_BLINK.cyclo ./Drivers/LIB/Scr/TASK_BLINK.d ./Drivers/LIB/Scr/TASK_BLINK.o ./Drivers/LIB/Scr/TASK_BLINK.su ./Drivers/LIB/Scr/TASK_COMMAND.cyclo ./Drivers/LIB/Scr/TASK_COMMAND.d ./Drivers/LIB/Scr/TASK_COMMAND.o ./Drivers/LIB/Scr/TASK_COMMAND.su
 
 .PHONY: clean-Drivers-2f-LIB-2f-Scr
 

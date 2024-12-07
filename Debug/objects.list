@@ -9,6 +9,7 @@
 "./Core/Startup/startup_stm32f405rgtx.o"
 "./Drivers/LIB/Scr/DLPF_lib.o"
 "./Drivers/LIB/Scr/FLASH_lib.o"
+"./Drivers/LIB/Scr/MAGNETIC_SENSOR_AS5048A.o"
 "./Drivers/LIB/Scr/PID_lib.o"
 "./Drivers/LIB/Scr/SWERVE_DRIVE_BLDC.o"
 "./Drivers/LIB/Scr/SWERVE_DRIVE_CAN.o"

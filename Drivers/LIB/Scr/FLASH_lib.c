@@ -7,8 +7,8 @@
 #include "FLASH_lib.h"
 #include "SWERVE_DRIVE_FOC.h"
 
-extern BLDC_HandleTypeDef hbldc1, hbldc2;
 extern uint16_t wheel_addr;
+extern BLDC_HandleTypeDef WHEELED_handler, STEERING_handler;
 
 static uint32_t flash_sector_addr;
 static uint8_t flash_sector_num;
@@ -165,15 +165,15 @@ void set_default_motor_param (void)
 	wheel_addr = (uint8_t)flash_data_buff[0];
 
 	WHEELED_handler.max_current = 5.0;
-	PID_set_konstanta(&WHEELED_handler.hpid_id, 0.02, 0.0001, 0);
-	PID_set_konstanta(&WHEELED_handler.hpid_iq, 0.02, 0.0002, 0);
-	PID_set_konstanta(&WHEELED_handler.hpid_omega, 0.002, 0.0000001, 0);
+	PID_set_konstanta(&WHEELED_handler.hpid_id, 0.02, 0.001, 0);
+	PID_set_konstanta(&WHEELED_handler.hpid_iq, 0.02, 0.002, 0);
+	PID_set_konstanta(&WHEELED_handler.hpid_omega, 0.002, 0.000002, 0);
 	WHEELED_handler.rotor_offset = 0.0;
 
 	STEERING_handler.max_current = 5.0;
-	PID_set_konstanta(&STEERING_handler.hpid_id, 0.001, 0.00002, 0);
-	PID_set_konstanta(&STEERING_handler.hpid_iq, 0.002, 0.00002, 0);
-	PID_set_konstanta(&STEERING_handler.hpid_theta, 1.5, 0, 0.001);
+	PID_set_konstanta(&STEERING_handler.hpid_id, 0.02, 0.002, 0);
+	PID_set_konstanta(&STEERING_handler.hpid_iq, 0.02, 0.002, 0);
+	PID_set_konstanta(&STEERING_handler.hpid_theta, 1.0, 0, 0);
 	STEERING_handler.rotor_offset = 0.0;
 	STEERING_handler.angle_offset = 0.0;
 }

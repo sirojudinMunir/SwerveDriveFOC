@@ -10,7 +10,6 @@
 
 #include "SWERVE_DRIVE_FOC.h"
 
-extern BLDC_HandleTypeDef hbldc1, hbldc2;
 extern double angle_sens, zero_offset, mag_angle_offset;
 extern int16_t hall_sens_count;
 
@@ -22,9 +21,15 @@ void BLDC_rpm_sens (BLDC_HandleTypeDef *hbldc);
 
 void BLDC_get_rpm (BLDC_HandleTypeDef *hbldc);
 
-void BLDC_set_speed (double rpm);
+void BLDC_speed_control (void);
 
-void BLDC_set_angle (float deg);
+void BLDC_angle_control (void);
+
+void zero_steer (void);
+
+void wheeled_motor_set_speed (float speed);
+
+void steering_motor_set_angle (float angle);
 
 void BLDC_calibrate (void);
 
@@ -32,5 +37,8 @@ void zero_mosfet (void);
 
 void BLDC2_zero_cal (void);
 
+void battery_read_init (void);
+
+double read_battery (void);
 
 #endif /* LIB_INC_SWERVE_DRIVE_BLDC_H_ */

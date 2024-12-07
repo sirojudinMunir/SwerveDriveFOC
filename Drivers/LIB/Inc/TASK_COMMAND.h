@@ -11,14 +11,14 @@
 #include "stdio.h"
 #include "cmsis_os.h"
 
-#define MAX_CMD_PARAM 	8
-#define MAX_CMD_MODE 	3
-#define MAX_CMD_MOTOR 	2
+#define MAX_LIST_CMD_PARAM 	8
+#define MAX_LIST_CMD_MODE 	3
+#define MAX_LIST_CMD_MOTOR 	2
 
 typedef enum
 {
 	_cmd_none, _default, _max_cur, _d_ctrl_pi, _q_ctrl_pi, _speed_ctrl_pi, _angle_ctrl_pd,
-	_rotor_angle_offset, _steering_zero_offset
+	_rotor_angle_offset, _steering_zero_offset, _addr, _steering_angle, _wheeled_speed
 }BLDC_cmdParamTypedef;
 
 typedef enum
@@ -28,7 +28,7 @@ typedef enum
 
 typedef enum
 {
-	_motor_none, _steering, _wheeled
+	_motor_none, _steering, _wheeled, _swerve
 }BLDC_cmdMotorTypedef;
 
 typedef struct{

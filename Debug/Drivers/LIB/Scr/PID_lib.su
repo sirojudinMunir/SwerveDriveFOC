@@ -1,7 +1,8 @@
-../Drivers/LIB/Scr/PID_lib.c:23:6:PID_set_konstanta	40	static
-../Drivers/LIB/Scr/PID_lib.c:38:6:PID_set_max_value	24	static
-../Drivers/LIB/Scr/PID_lib.c:52:8:PID_calculate	88	static
-../Drivers/LIB/Scr/PID_lib.c:96:8:PI_calculate	64	static
-../Drivers/LIB/Scr/PID_lib.c:122:8:PD_calculate	48	static
-../Drivers/LIB/Scr/PID_lib.c:138:6:counting_time	4	static
-../Drivers/LIB/Scr/PID_lib.c:144:8:get_us	16	static
+../Drivers/LIB/Scr/PID_lib.c:15:6:PID_set_time_sampling	24	static
+../Drivers/LIB/Scr/PID_lib.c:28:6:PID_set_konstanta	40	static
+../Drivers/LIB/Scr/PID_lib.c:43:6:PID_set_max_value	24	static
+../Drivers/LIB/Scr/PID_lib.c:57:8:PID_calculate	72	static
+../Drivers/LIB/Scr/PID_lib.c:97:8:PI_calculate	72	static
+../Drivers/LIB/Scr/PID_lib.c:136:8:PD_calculate	48	static
+../Drivers/LIB/Scr/PID_lib.c:161:6:counting_time	4	static
+../Drivers/LIB/Scr/PID_lib.c:167:8:get_us	16	static

@@ -1,5 +1,5 @@
 /*
- * FOC.h
+ * SWERVE_DRIVE_FOC.h
  *
  *  Created on: Nov 22, 2024
  *      Author: munir
@@ -13,38 +13,32 @@
 #include "DLPF_lib.h"
 #include "math.h"
 
+#define DEG_2_RAD 				0.01745329251994f
+#define RAD_2_DEG				57.2957795130823208f
+#define ONE_OVER_SQRT3 			0.5773502691896257f
+#define SQRT3_OVER_TWO 			0.8660254037844386f
 
-#define SET_DEFAULT_PARAM 0
+#define ADC_2_CURRENT 			0.0040293040293
 
-#define DEG_2_RAD 	0.01745329251994f
-#define RAD_2_DEG	57.2957795130823208f
-#define ONE_OVER_SQRT3 0.5773502691896257f
-#define SQRT3_OVER_TWO 0.8660254037844386f
+#define TIMER_FREQ				168000000
+#define BLDC_PERIODE			4200
 
-#define ADC_2_CURRENT 0.0040293040293
+#define BLDC_PWM_FREQ 			10000.0f
+#define BLDC_CURRENT_CTRL_LOOP	10
+#define BLDC_CURRENT_CTRL_TS	(1000000.0f/BLDC_PWM_FREQ)
+#define BLDC_CTRL_TS			(BLDC_CURRENT_CTRL_TS*BLDC_CURRENT_CTRL_LOOP)
 
-#define TIMER_FREQ	168000000
-#define BLDC_PERIODE	4200
+#define BLDC_PWM_CENTER 		2047
+#define BLDC_PWM_MAX 			4100
+#define BLDC_PWM_MIN 			100
+#define BLDC_PWM_GAIN 			500
+#define BLDC_PWM_ADC_TRIG 		4199
 
-#define BLDC_PWM_CENTER 2047
-#define BLDC_PWM_MAX 4100
-#define BLDC_PWM_MIN 100
-#define BLDC_PWM_GAIN 500
-#define BLDC_PWM_ADC_TRIG 4199
+#define NORMAL 	1
+#define SWAP 	0
 
-#define BLDC_STEERING _BLDC2
-#define STEERING_handler hbldc2
-
-#define BLDC_WHEELED _BLDC1
-#define WHEELED_handler hbldc1
-
-#define NORMAL 1
-#define SWAP 0
-
-#define ENABLE 1
+#define ENABLE 	1
 #define DISABLE 0
-
-#define BLDC_CHANNEL NORMAL /*NORAML / SWAP*/
 
 #if BLDC_CHANNEL
 
@@ -90,7 +84,7 @@
 
 typedef enum
 {
-	_BLDC1 = 0, _BLDC2 = 1
+	BLDC_WHEELED = 0, BLDC_STEERING = 1
 }bldc_channel_t;
 
 typedef enum

@@ -1,0 +1,2 @@
+../Drivers/LIB/Scr/MAGNETIC_SENSOR_AS5048A.c:34:19:AS5048A_send_data	24	static
+../Drivers/LIB/Scr/MAGNETIC_SENSOR_AS5048A.c:46:6:HAL_SPI_TxRxCpltCallback	32	static

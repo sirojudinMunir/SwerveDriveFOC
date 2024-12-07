@@ -1,5 +1,5 @@
 /*
- * FOC.c
+ * SWERVE_DRIVE_FOC.c
  *
  *  Created on: Nov 22, 2024
  *      Author: munir
@@ -44,15 +44,18 @@ void BLDC_init (BLDC_HandleTypeDef *hbldc)
 	hbldc->p_shift = 90;
 	if (hbldc->channel == BLDC_WHEELED)
 	{
-		BLDC_set_freq (hbldc, 10000);
+		BLDC_set_freq (hbldc, BLDC_PWM_FREQ);
 		dlpf_set_alpha(&hbldc->hdlpf_current_filt[_u], 0.9998);//0.9998
 		dlpf_set_alpha(&hbldc->hdlpf_current_filt[_v], 0.9998);
 		dlpf_set_alpha(&hbldc->hdlpf_current_filt[_w], 0.9998);
 		dlpf_set_alpha(&hbldc->hdlpf_cmps, 0.002);
 
-		PID_set_max_value(&hbldc->hpid_id, 4.0);//4 4000
+		PID_set_max_value(&hbldc->hpid_id, 4.0);
 		PID_set_max_value(&hbldc->hpid_iq, 4.0);
 		PID_set_max_value(&hbldc->hpid_omega, hbldc->max_current);
+		PID_set_time_sampling(&hbldc->hpid_id, BLDC_CURRENT_CTRL_TS);
+		PID_set_time_sampling(&hbldc->hpid_iq, BLDC_CURRENT_CTRL_TS);
+		PID_set_time_sampling(&hbldc->hpid_omega, BLDC_CTRL_TS);
 
 		HAL_TIMEx_HallSensor_Start_IT (&htim5);
 		HAL_TIM_PWM_Start(WHEELED_htim, TIM_CHANNEL_1);
@@ -68,14 +71,17 @@ void BLDC_init (BLDC_HandleTypeDef *hbldc)
 	}
 	else if (hbldc->channel == BLDC_STEERING)
 	{
-		BLDC_set_freq (hbldc, 10000);
+		BLDC_set_freq (hbldc, BLDC_PWM_FREQ);
 		dlpf_set_alpha(&hbldc->hdlpf_current_filt[_u], 0.95);//0.99925
 		dlpf_set_alpha(&hbldc->hdlpf_current_filt[_v], 0.95);
 		dlpf_set_alpha(&hbldc->hdlpf_current_filt[_w], 0.95);
 
-		PID_set_max_value(&hbldc->hpid_id, 4);
-		PID_set_max_value(&hbldc->hpid_iq, 4);
+		PID_set_max_value(&hbldc->hpid_id, 4.0);
+		PID_set_max_value(&hbldc->hpid_iq, 4.0);
 		PID_set_max_value(&hbldc->hpid_theta, hbldc->max_current);
+		PID_set_time_sampling(&hbldc->hpid_id, BLDC_CURRENT_CTRL_TS);
+		PID_set_time_sampling(&hbldc->hpid_iq, BLDC_CURRENT_CTRL_TS);
+		PID_set_time_sampling(&hbldc->hpid_theta, BLDC_CTRL_TS);
 
 		HAL_TIM_PWM_Start(STEERING_htim, TIM_CHANNEL_1);
 		HAL_TIM_PWM_Start(STEERING_htim, TIM_CHANNEL_2);
