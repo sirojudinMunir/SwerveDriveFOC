@@ -15,7 +15,6 @@
  * extern from main.c
  */
 extern _Bool mag_zero_set_flag;
-extern uint8_t usb_tx_buff[300];
 extern uint32_t usb_tx_lenght;
 extern BLDC_HandleTypeDef WHEELED_handler, STEERING_handler;
 extern uint16_t wheel_addr;
@@ -31,7 +30,7 @@ const osThreadAttr_t command_task_attributes = {
 
 USB_settingTypedef usb_setting;
 
-uint8_t usb_tx_buff[300];
+uint8_t usb_tx_buff[1000];
 
 _Bool next_change_param = 0, flash_save_flag = 0, usb_msg_flag = 0;
 double x_kp, x_ki, x_kd;
@@ -41,7 +40,8 @@ CMD_listTypedef cmd_motor_list[] = {
 		{"STR", _steering},
 		{"WLD", _wheeled},
 
-		{"SWERVE", _swerve}
+		{"SWERVE", _swerve},
+		{"HELP", _help}
 };
 
 CMD_listTypedef cmd_mode_list[] = {
@@ -330,6 +330,39 @@ void cmd_feedback_message (void){
 	CDC_Transmit_FS (usb_tx_buff, str_ln);
 }
 
+void help_text (){
+	uint32_t str_ln = 0;
+	str_ln += sprintf ((char*)usb_tx_buff, "\nHELP.............................................................\n");
+	str_ln += sprintf ((char*)usb_tx_buff+str_ln, "<command> <mode> <param> <value>\n");
+	str_ln += sprintf ((char*)usb_tx_buff+str_ln, "command:\n");
+	str_ln += sprintf ((char*)usb_tx_buff+str_ln, "\t%s : steering motor\n", cmd_motor_list[_steering].cmd_str);
+	str_ln += sprintf ((char*)usb_tx_buff+str_ln, "\t%s : wheeled motor\n", cmd_motor_list[_wheeled].cmd_str);
+	str_ln += sprintf ((char*)usb_tx_buff+str_ln, "mode:\n");
+	str_ln += sprintf ((char*)usb_tx_buff+str_ln, "\t%s : input new parameter value(s)\n", cmd_mode_list[_set].cmd_str);
+	str_ln += sprintf ((char*)usb_tx_buff+str_ln, "\t%s : get parameter value(s)\n", cmd_mode_list[_get].cmd_str);
+	str_ln += sprintf ((char*)usb_tx_buff+str_ln, "\t%s : get all parameter values\n", cmd_mode_list[_info].cmd_str);
+	str_ln += sprintf ((char*)usb_tx_buff+str_ln, "param:\n");
+	str_ln += sprintf ((char*)usb_tx_buff+str_ln, "\t%s : limit current in Ampere\n", cmd_param_list[_max_cur].cmd_str);
+	str_ln += sprintf ((char*)usb_tx_buff+str_ln, "\t%s : Kp and Ki for direct current control\n", cmd_param_list[_d_ctrl_pi].cmd_str);
+	str_ln += sprintf ((char*)usb_tx_buff+str_ln, "\t%s : Kp and Ki for quadrature current control\n", cmd_param_list[_q_ctrl_pi].cmd_str);
+	str_ln += sprintf ((char*)usb_tx_buff+str_ln, "\t%s : Kp and Ki for wheled motor speed control\n", cmd_param_list[_speed_ctrl_pi].cmd_str);
+	str_ln += sprintf ((char*)usb_tx_buff+str_ln, "\t%s : Kp and Kd for steering motor position control\n", cmd_param_list[_angle_ctrl_pd].cmd_str);
+	str_ln += sprintf ((char*)usb_tx_buff+str_ln, "\t%s : offset rotor angle position in degree\n", cmd_param_list[_rotor_angle_offset].cmd_str);
+	str_ln += sprintf ((char*)usb_tx_buff+str_ln, "\t%s : offset position steering wheel in degree\n", cmd_param_list[_steering_zero_offset].cmd_str);
+	str_ln += sprintf ((char*)usb_tx_buff+str_ln, "value:\n");
+	str_ln += sprintf ((char*)usb_tx_buff+str_ln, "\tadd value(s) if mode is '%s'\n", cmd_mode_list[_set].cmd_str);
+	str_ln += sprintf ((char*)usb_tx_buff+str_ln, "\tyou must add '=' before add the value\n");
+	str_ln += sprintf ((char*)usb_tx_buff+str_ln, "\tin control parameter like (%s, %s, %s, %s), \n\tyou must add multiple values in a row\n",
+													cmd_param_list[_d_ctrl_pi].cmd_str,
+													cmd_param_list[_q_ctrl_pi].cmd_str,
+													cmd_param_list[_speed_ctrl_pi].cmd_str,
+													cmd_param_list[_angle_ctrl_pd].cmd_str);
+	str_ln += sprintf ((char*)usb_tx_buff+str_ln, "example:\n");
+	str_ln += sprintf ((char*)usb_tx_buff+str_ln, "WLD SET CLIM = 5.5\n");
+	str_ln += sprintf ((char*)usb_tx_buff+str_ln, "STR SET DCTR = 0.02 0.00234\n");
+	CDC_Transmit_FS (usb_tx_buff, str_ln);
+}
+
 uint32_t count_separator (char *str, char separator_char){
 	uint32_t separator = 0;
 	for (uint32_t i = 0; str[i] == separator_char; i++){
@@ -382,7 +415,7 @@ int cmd_set (char *cmd)
 		}
 	}
 
-	if (motor != _motor_none)
+	if (motor == _steering || motor == _wheeled)
 	{
 		offset_index += find_separator (cmd+offset_index, ' ');
 		offset_index += count_separator (cmd+offset_index, ' ');
@@ -496,6 +529,9 @@ int cmd_set (char *cmd)
 			wrong_cmd_message ();
 			return -1;
 		}
+	}
+	else if (motor == _help){
+		help_text ();
 	}
 	else {
 		wrong_cmd_message ();

@@ -10,8 +10,9 @@
 ../Drivers/LIB/Scr/TASK_COMMAND.c:207:6:wrong_cmd_message	32	static
 ../Drivers/LIB/Scr/TASK_COMMAND.c:214:10:get_param_info	40	static
 ../Drivers/LIB/Scr/TASK_COMMAND.c:243:6:cmd_feedback_message	32	static
-../Drivers/LIB/Scr/TASK_COMMAND.c:333:10:count_separator	24	static
-../Drivers/LIB/Scr/TASK_COMMAND.c:341:10:find_separator	24	static
-../Drivers/LIB/Scr/TASK_COMMAND.c:353:10:count_float_number	24	static
-../Drivers/LIB/Scr/TASK_COMMAND.c:364:5:cmd_set	88	static
-../Drivers/LIB/Scr/TASK_COMMAND.c:525:6:start_command_task	16	static
+../Drivers/LIB/Scr/TASK_COMMAND.c:333:6:help_text	24	static
+../Drivers/LIB/Scr/TASK_COMMAND.c:366:10:count_separator	24	static
+../Drivers/LIB/Scr/TASK_COMMAND.c:374:10:find_separator	24	static
+../Drivers/LIB/Scr/TASK_COMMAND.c:386:10:count_float_number	24	static
+../Drivers/LIB/Scr/TASK_COMMAND.c:397:5:cmd_set	88	static
+../Drivers/LIB/Scr/TASK_COMMAND.c:561:6:start_command_task	16	static

@@ -10,8 +10,9 @@ TASK_COMMAND.c:159:6:pid_setting	17
 TASK_COMMAND.c:207:6:wrong_cmd_message	1
 TASK_COMMAND.c:214:10:get_param_info	6
 TASK_COMMAND.c:243:6:cmd_feedback_message	20
-TASK_COMMAND.c:333:10:count_separator	2
-TASK_COMMAND.c:341:10:find_separator	3
-TASK_COMMAND.c:353:10:count_float_number	6
-TASK_COMMAND.c:364:5:cmd_set	33
-TASK_COMMAND.c:525:6:start_command_task	3
+TASK_COMMAND.c:333:6:help_text	1
+TASK_COMMAND.c:366:10:count_separator	2
+TASK_COMMAND.c:374:10:find_separator	3
+TASK_COMMAND.c:386:10:count_float_number	6
+TASK_COMMAND.c:397:5:cmd_set	35
+TASK_COMMAND.c:561:6:start_command_task	3

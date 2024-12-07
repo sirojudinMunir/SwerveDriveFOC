@@ -13,22 +13,28 @@
 
 #define MAX_LIST_CMD_PARAM 	8
 #define MAX_LIST_CMD_MODE 	3
-#define MAX_LIST_CMD_MOTOR 	2
+#define MAX_LIST_CMD_MOTOR 	4
 
 typedef enum
 {
-	_cmd_none, _default, _max_cur, _d_ctrl_pi, _q_ctrl_pi, _speed_ctrl_pi, _angle_ctrl_pd,
-	_rotor_angle_offset, _steering_zero_offset, _addr, _steering_angle, _wheeled_speed
+	 _default, _max_cur, _d_ctrl_pi, _q_ctrl_pi, _speed_ctrl_pi, _angle_ctrl_pd,
+	_rotor_angle_offset, _steering_zero_offset, _addr, _steering_angle, _wheeled_speed,
+
+	_cmd_none,
 }BLDC_cmdParamTypedef;
 
 typedef enum
 {
-	_mode_none, _set, _get, _info
+	_set, _get, _info,
+
+	_mode_none,
 }BLDC_cmdModeTypedef;
 
 typedef enum
 {
-	_motor_none, _steering, _wheeled, _swerve
+	_steering, _wheeled, _swerve, _help,
+
+	_motor_none,
 }BLDC_cmdMotorTypedef;
 
 typedef struct{
@@ -58,6 +64,6 @@ void start_command_task(void *argument);
 extern osThreadId_t command_task_handle;
 extern const osThreadAttr_t command_task_attributes;
 
-extern uint8_t usb_tx_buff[300];
+extern uint8_t usb_tx_buff[1000];
 
 #endif /* LIB_INC_COMMAND_H_ */
