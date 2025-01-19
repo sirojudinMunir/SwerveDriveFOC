@@ -40,6 +40,11 @@
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
 
+typedef enum
+{
+	_dq_test, _current_test, _torque_test, _speed_test, _angle_test
+}BLDC_TestTypedef;
+
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
@@ -53,7 +58,6 @@
  * */
 #define SET_DEFAULT_PARAM 		0
 
-#define BLDC_CHANNEL NORMAL /*NORAML / SWAP*/
 
 /* USER CODE END PD */
 
@@ -94,10 +98,6 @@ const osThreadAttr_t defaultTask_attributes = {
 /* USER CODE BEGIN PV */
 
 
-typedef enum
-{
-	_dq_test, _current_test, _torque_test, _speed_test, _angle_test
-}BLDC_TestTypedef;
 
 DLPF_HandleTypeDef 	i_test[3];
 
@@ -139,31 +139,31 @@ extern uint8_t CDC_Transmit_FS(uint8_t* Buf, uint16_t Len);
 
 void wheel_init ()
 {
-#ifdef WHEEL_X
-	wheel_addr = 0x100;
-	zero_offset = 0;
-	mag_angle_offset = -23.2;
-#else
-#ifdef WHEEL_0
-	wheel_addr = 0x200;
-	zero_offset = -55.0;
-	mag_angle_offset = -2.4;
-#else
-#ifdef WHEEL_1
-	wheel_addr = 0x211;
-	zero_offset = 64.0; //-175.0
-	mag_angle_offset = -50.6;//-42.0
-#else
-#ifdef WHEEL_2
-	wheel_addr = 0x222;
-	zero_offset = -180.0;
-	mag_angle_offset = -10.98;//-16.78
-#else
-#error "Pilih antara WHEEL_0, WHEEL_1, atau WHEEL_2!"
-#endif
-#endif
-#endif
-#endif
+//#ifdef WHEEL_X
+//	wheel_addr = 0x100;
+//	STEERING_handler.angle_offset = 0;
+//	STEERING_handler.rotor_offset = -23.2;
+//#else
+//#ifdef WHEEL_0
+//	wheel_addr = 0x200;
+//	STEERING_handler.angle_offset = -55.0;
+//	STEERING_handler.rotor_offset = -2.4;
+//#else
+//#ifdef WHEEL_1
+//	wheel_addr = 0x211;
+//	STEERING_handler.angle_offset = 64.0;
+//	STEERING_handler.rotor_offset = -50.6;
+//#else
+//#ifdef WHEEL_2
+//	wheel_addr = 0x222;
+//	STEERING_handler.angle_offset = -180.0;
+//	STEERING_handler.rotor_offset = -10.98;
+//#else
+//#error "Pilih antara WHEEL_0, WHEEL_1, atau WHEEL_2!"
+//#endif
+//#endif
+//#endif
+//#endif
 
 	WHEELED_handler.channel = BLDC_WHEELED;
 	STEERING_handler.channel = BLDC_STEERING;
@@ -175,6 +175,31 @@ void wheel_init ()
 	TxHeader.IDE = CAN_ID_STD;
 	TxHeader.RTR = CAN_RTR_DATA;
 
+	HAL_Delay(200);
+	FLASH_set_sector_addrs (FLASH_SECTOR_11, 0x080E0000);
+#if SET_DEFAULT_PARAM
+	set_default_motor_param ();
+	flash_save_data ();
+#else
+	flash_get_data ();
+#endif
+
+	LED_BUILTIN_GPIO_Port->BSRR = LED_BUILTIN_Pin;
+	battery_read_init ();
+	BLDC_init (&WHEELED_handler);
+	  BLDC_init (&STEERING_handler);
+
+	dlpf_set_alpha(&i_test[0], 0.01);
+	dlpf_set_alpha(&i_test[1], 0.01);
+	dlpf_set_alpha(&i_test[2], 0.01);
+
+	BLDC_get_sector (&WHEELED_handler);
+
+	HAL_TIM_Base_Start_IT(&htim3);
+	HAL_TIM_Base_Start_IT(&htim4);
+
+	HAL_TIM_Base_Start_IT(&htim7);
+	AS5048A_send_data (1, 1, 0x3fff);
 }
 
 //==================================================================================
@@ -226,34 +251,6 @@ int main(void)
   FOC_init ();
   wheel_init ();
 
-  HAL_Delay(200);
-  FLASH_set_sector_addrs (FLASH_SECTOR_11, 0x080E0000);
-#if SET_DEFAULT_PARAM
-  set_default_motor_param ();
-  flash_save_data ();
-#else
-  flash_get_data ();
-#endif
-
-  LED_BUILTIN_GPIO_Port->BSRR = LED_BUILTIN_Pin;
-  battery_read_init ();
-  BLDC_init (&WHEELED_handler);
-  BLDC_init (&STEERING_handler);
-
-  dlpf_set_alpha(&i_test[0], 0.01);
-  dlpf_set_alpha(&i_test[1], 0.01);
-  dlpf_set_alpha(&i_test[2], 0.01);
-
-  BLDC_get_sector (&WHEELED_handler);
-
-  HAL_TIM_Base_Start_IT(&htim3);
-  HAL_TIM_Base_Start_IT(&htim4);
-
-  HAL_TIM_Base_Start_IT(&htim7);
-  AS5048A_send_data (1, 1, 0x3fff);
-  BLDC_spwm (&STEERING_handler);
-  BLDC_spwm (&WHEELED_handler);
-
 //  zero_steer ();
 //  data_rpm = 300;
 
@@ -280,12 +277,12 @@ int main(void)
 
   /* Create the thread(s) */
   /* creation of defaultTask */
-  blink_task_handle = osThreadNew(start_blink_task, NULL, &blink_task_attributes);
-  command_task_handle = osThreadNew(start_command_task, NULL, &command_task_attributes);
   defaultTaskHandle = osThreadNew(StartDefaultTask, NULL, &defaultTask_attributes);
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
+  blink_task_handle = osThreadNew(start_blink_task, NULL, &blink_task_attributes);
+  command_task_handle = osThreadNew(start_command_task, NULL, &command_task_attributes);
   /* USER CODE END RTOS_THREADS */
 
   /* USER CODE BEGIN RTOS_EVENTS */
@@ -1214,7 +1211,7 @@ void StartDefaultTask(void *argument)
 	float angle_steer_call = angle_sens;
 	uint32_t t_validate = HAL_GetTick();
 
-	wheel_state = 1;
+	wheel_state = 0;
   /* USER CODE BEGIN 5 */
   /* Infinite loop */
   for(;;)
@@ -1228,8 +1225,14 @@ void StartDefaultTask(void *argument)
 	}
 	else{
 		/*TEST PARAMETERS SPEED & ANGLE*/
-		wheeled_motor_set_speed (0);
-		steering_motor_set_angle (0);
+
+//		wheeled_motor_set_speed (0);
+//		steering_motor_set_angle (0);
+//		osDelay(1000);
+//		wheeled_motor_set_speed (100);
+//		steering_motor_set_angle (90);
+//		osDelay(1000);
+
 		/*TEST PARAMETERS SPEED & ANGLE*/
 	}
     osDelay(1);
@@ -1261,12 +1264,11 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 	}
 	if (htim->Instance == TIM7)
 	{
-		if (read_ready)
-		{
-//			HAL_TIM_Base_Stop_IT(&htim7);
-		  if (AS5048A_send_data (1, 1, 0x3fff) == HAL_OK)
-			  read_ready = 0;
-		}
+//		if (read_ready)
+//		{
+//		  if (AS5048A_send_data (1, 1, 0x3fff) == HAL_OK)
+//			  read_ready = 0;
+//		}
 	}
 	if (htim->Instance == TIM4)
 	{

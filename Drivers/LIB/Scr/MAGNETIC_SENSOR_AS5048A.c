@@ -9,9 +9,9 @@
 
 extern SPI_HandleTypeDef hspi1;
 extern _Bool 	read_ready;
-extern double	steer_angle_offset;
+extern float	steer_angle_offset;
 
-extern double 	angle_sens;
+extern float 	angle_sens;
 
 _Bool		error_flag;
 

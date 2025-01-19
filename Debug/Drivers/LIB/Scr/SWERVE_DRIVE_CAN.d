@@ -34,7 +34,10 @@ Drivers/LIB/Scr/SWERVE_DRIVE_CAN.o: ../Drivers/LIB/Scr/SWERVE_DRIVE_CAN.c \
  ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_tim_ex.h \
  ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_pcd.h \
  ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_ll_usb.h \
- ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_pcd_ex.h
+ ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_pcd_ex.h \
+ C:/Users/munir/git/SwerveDriveFOC/DUAL_BLDC_FOC/Drivers/LIB/Inc/SWERVE_DRIVE_FOC.h \
+ C:/Users/munir/git/SwerveDriveFOC/DUAL_BLDC_FOC/Drivers/LIB/Inc/PID_lib.h \
+ C:/Users/munir/git/SwerveDriveFOC/DUAL_BLDC_FOC/Drivers/LIB/Inc/DLPF_lib.h
 C:/Users/munir/git/SwerveDriveFOC/DUAL_BLDC_FOC/Drivers/LIB/Inc/SWERVE_DRIVE_CAN.h:
 ../Core/Inc/main.h:
 ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal.h:
@@ -72,3 +75,6 @@ C:/Users/munir/git/SwerveDriveFOC/DUAL_BLDC_FOC/Drivers/LIB/Inc/SWERVE_DRIVE_CAN
 ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_pcd.h:
 ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_ll_usb.h:
 ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_pcd_ex.h:
+C:/Users/munir/git/SwerveDriveFOC/DUAL_BLDC_FOC/Drivers/LIB/Inc/SWERVE_DRIVE_FOC.h:
+C:/Users/munir/git/SwerveDriveFOC/DUAL_BLDC_FOC/Drivers/LIB/Inc/PID_lib.h:
+C:/Users/munir/git/SwerveDriveFOC/DUAL_BLDC_FOC/Drivers/LIB/Inc/DLPF_lib.h:

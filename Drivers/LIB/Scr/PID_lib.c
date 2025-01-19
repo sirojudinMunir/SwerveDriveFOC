@@ -8,11 +8,11 @@
 #include "PID_lib.h"
 
 uint32_t t_count;
-double ts;
+float ts;
 
 //============================================================================================
 
-void PID_set_time_sampling (PID_HandleTypeDef *hpid, double us)
+void PID_set_time_sampling (PID_HandleTypeDef *hpid, float us)
 {
 	hpid->ts = us;
 }
@@ -25,7 +25,7 @@ void PID_set_time_sampling (PID_HandleTypeDef *hpid, double us)
   * 		kd 	  	differential constant
   * @retval none
   */
-void PID_set_konstanta (PID_HandleTypeDef *hpid, double kp, double ki, double kd)
+void PID_set_konstanta (PID_HandleTypeDef *hpid, float kp, float ki, float kd)
 {
 	hpid->kp = kp;
 	hpid->ki = ki;
@@ -40,7 +40,7 @@ void PID_set_konstanta (PID_HandleTypeDef *hpid, double kp, double ki, double kd
   * 		max_mv	maximum manipulated value / output from PID, PI, or PD control
   * @retval none
   */
-void PID_set_max_value (PID_HandleTypeDef *hpid, double max_mv)
+void PID_set_max_value (PID_HandleTypeDef *hpid, float max_mv)
 {
 	hpid->max_mv = max_mv;
 }
@@ -54,9 +54,9 @@ void PID_set_max_value (PID_HandleTypeDef *hpid, double max_mv)
   * 		pv		previous value
   * @retval mv		manipulated value / output PID Control
   */
-double PID_calculate (PID_HandleTypeDef *hpid, double sp, double pv)
+float PID_calculate (PID_HandleTypeDef *hpid, float sp, float pv)
 {
-	double result = 0, integral_temp;
+	float result = 0, integral_temp;
 
 	hpid->error = sp - pv;
 	hpid->P = hpid->error * hpid->kp;
@@ -94,9 +94,9 @@ double PID_calculate (PID_HandleTypeDef *hpid, double sp, double pv)
   * 		pv		previous value
   * @retval mv		manipulated value / output PI Control
   */
-double PI_calculate (PID_HandleTypeDef *hpid, double sp, double pv)
+float PI_calculate (PID_HandleTypeDef *hpid, float sp, float pv)
 {
-	double result = 0, integral_temp;
+	float result = 0, integral_temp;
 
 	hpid->error = sp - pv;
 	hpid->P = hpid->error * hpid->kp;
@@ -133,9 +133,9 @@ double PI_calculate (PID_HandleTypeDef *hpid, double sp, double pv)
   * 		pv		previous value
   * @retval mv		manipulated value / output PD Control
   */
-double PD_calculate (PID_HandleTypeDef *hpid, double sp, double pv)
+float PD_calculate (PID_HandleTypeDef *hpid, float sp, float pv)
 {
-	double result = 0;
+	float result = 0;
 
 	hpid->error = sp - pv;
 	hpid->P = hpid->error * hpid->kp;
@@ -164,10 +164,10 @@ void counting_time (void)
 	if (t_count > 999999) t_count = 0;
 }
 
-double get_us (void)
+float get_us (void)
 {
-	double us;
-	us = (double)(TIM4->CNT + t_count*10000);// * 0.00595238095238095;
+	float us;
+	us = (float)(TIM4->CNT + t_count*10000);// * 0.00595238095238095;
 	return us;
 }
 

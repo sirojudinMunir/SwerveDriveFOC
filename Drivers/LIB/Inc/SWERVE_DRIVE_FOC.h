@@ -40,6 +40,8 @@
 #define ENABLE 	1
 #define DISABLE 0
 
+#define BLDC_CHANNEL NORMAL /*NORAML / SWAP*/
+
 #if BLDC_CHANNEL
 
 #define STEERING_TIM TIM1
@@ -98,16 +100,16 @@ typedef struct
 	bldc_output_t peak_volt;
 	PID_HandleTypeDef hpid_id, hpid_iq, hpid_omega, hpid_theta;
 	DLPF_HandleTypeDef hdlpf_current_filt[3], hdlpf_cmps;
+	_Bool 	state;
 	uint32_t adc_buff[3], spwm[3], peak_pwm, c_loop, zero_det_t;
+	int8_t 	dir, last_dir;
 	uint8_t hall_sector;
-	double sector_theta, last_sector_theta, new_sector_theta;
-	double theta, raw_current[3], id_result, iq_result,
+	float 	sector_theta, last_sector_theta, new_sector_theta,
+	 	 	theta, raw_current[3], id_result, iq_result,
 			p_shift, rotor_offset, angle_offset,
 			ia, ib, ic, max_current,
 			rpm_abs, rpm, cmps,
 			angle_estimation, last_angle_estimation;
-	int8_t dir, last_dir;
-	_Bool state;
 }BLDC_HandleTypeDef;
 
 

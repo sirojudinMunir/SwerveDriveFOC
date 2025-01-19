@@ -101,80 +101,95 @@ void FLASH_read(uint32_t idx, void *rdBuf, uint32_t Nsize, DataTypeDef dataType)
 	}
 }
 
+void set_default_motor_param (void)
+{
+	wheel_addr = 0x200;
+
+	WHEELED_handler.max_current = 5.0;
+	PID_set_konstanta(&WHEELED_handler.hpid_id, 0.02, 0.0001, 0);
+	PID_set_konstanta(&WHEELED_handler.hpid_iq, 0.02, 0.0002, 0);
+	PID_set_konstanta(&WHEELED_handler.hpid_omega, 0.012, 0.000001, 0);
+	WHEELED_handler.rotor_offset = 0.0;
+
+	STEERING_handler.max_current = 5.0;
+	PID_set_konstanta(&STEERING_handler.hpid_id, 0.005, 0.001, 0);
+	PID_set_konstanta(&STEERING_handler.hpid_iq, 0.005, 0.001, 0);
+	PID_set_konstanta(&STEERING_handler.hpid_theta, 1.2, 0, 0);
+	STEERING_handler.rotor_offset = 0.0;
+	STEERING_handler.angle_offset = 0.0;
+}
 
 void flash_save_data (void)
 {
 	LED_BUILTIN_GPIO_Port->BSRR = LED_BUILTIN_Pin<<16;
 
-	flash_data_buff[0] = wheel_addr;
+	flash_data_buff[1] = *((uint32_t*)&WHEELED_handler.max_current);
+	flash_data_buff[2] = *((uint32_t*)&WHEELED_handler.hpid_id.kp);
+	flash_data_buff[3] = *((uint32_t*)&WHEELED_handler.hpid_id.ki);
+	flash_data_buff[4] = *((uint32_t*)&WHEELED_handler.hpid_iq.kp);
+	flash_data_buff[5] = *((uint32_t*)&WHEELED_handler.hpid_iq.ki);
+	flash_data_buff[6] = *((uint32_t*)&WHEELED_handler.hpid_omega.kp);
+	flash_data_buff[7] = *((uint32_t*)&WHEELED_handler.hpid_omega.ki);
+	flash_data_buff[8] = *((uint32_t*)&WHEELED_handler.rotor_offset);
 
-	flash_data_buff[1] = (uint32_t)(WHEELED_handler.max_current*1000000);
-	flash_data_buff[2] = (uint32_t)(WHEELED_handler.hpid_id.kp*100000000);
-	flash_data_buff[3] = (uint32_t)(WHEELED_handler.hpid_id.ki*100000000);
-	flash_data_buff[4] = (uint32_t)(WHEELED_handler.hpid_iq.kp*100000000);
-	flash_data_buff[5] = (uint32_t)(WHEELED_handler.hpid_iq.ki*100000000);
-	flash_data_buff[6] = (uint32_t)(WHEELED_handler.hpid_omega.kp*100000000);
-	flash_data_buff[7] = (uint32_t)(WHEELED_handler.hpid_omega.ki*100000000);
-	flash_data_buff[8] = (int32_t)(WHEELED_handler.rotor_offset*1000000);
+	flash_data_buff[9]  = *((uint32_t*)&STEERING_handler.max_current);
+	flash_data_buff[10] = *((uint32_t*)&STEERING_handler.hpid_id.kp);
+	flash_data_buff[11] = *((uint32_t*)&STEERING_handler.hpid_id.ki);
+	flash_data_buff[12] = *((uint32_t*)&STEERING_handler.hpid_iq.kp);
+	flash_data_buff[13] = *((uint32_t*)&STEERING_handler.hpid_iq.ki);
+	flash_data_buff[14] = *((uint32_t*)&STEERING_handler.hpid_theta.kp);
+	flash_data_buff[15] = *((uint32_t*)&STEERING_handler.hpid_theta.kd);
+	flash_data_buff[16] = *((uint32_t*)&STEERING_handler.rotor_offset);
+	flash_data_buff[17] = *((uint32_t*)&STEERING_handler.angle_offset);
 
-	flash_data_buff[9] = (uint32_t)(STEERING_handler.max_current*1000000);
-	flash_data_buff[10] = (uint32_t)(STEERING_handler.hpid_id.kp*100000000);
-	flash_data_buff[11] = (uint32_t)(STEERING_handler.hpid_id.ki*100000000);
-	flash_data_buff[12] = (uint32_t)(STEERING_handler.hpid_iq.kp*100000000);
-	flash_data_buff[13] = (uint32_t)(STEERING_handler.hpid_iq.ki*100000000);
-	flash_data_buff[14] = (uint32_t)(STEERING_handler.hpid_theta.kp*100000000);
-	flash_data_buff[15] = (uint32_t)(STEERING_handler.hpid_theta.kd*100000000);
-	flash_data_buff[16] = (int32_t)(STEERING_handler.rotor_offset*1000000);
-	flash_data_buff[17] = (int32_t)(STEERING_handler.angle_offset*1000000);
+	flash_data_buff[18] = *((uint32_t*)&wheel_addr);
 
-	FLASH_write(0, flash_data_buff, 18, DATA_TYPE_32);
+	FLASH_write(0, flash_data_buff, 19, DATA_TYPE_32);
 
 	LED_BUILTIN_GPIO_Port->BSRR = LED_BUILTIN_Pin;
 }
 
 void flash_get_data (void)
 {
-	FLASH_read(0, flash_data_buff, 18, DATA_TYPE_32);
+	_Bool flash_empty_detect = 0;
+	FLASH_read(0, flash_data_buff, 19, DATA_TYPE_32);
 
-	wheel_addr = (uint8_t)flash_data_buff[0];
+	for (uint32_t i = 1; i < 19; i++){
+		if (flash_data_buff[i] == 0xffffffff){
+			flash_empty_detect = 1;
+			break;
+		}
+	}
 
-	WHEELED_handler.max_current = (double)flash_data_buff[1]/1000000.0;
-	WHEELED_handler.hpid_id.kp = (double)flash_data_buff[2]/100000000.0;
-	WHEELED_handler.hpid_id.ki = (double)flash_data_buff[3]/100000000.0;
-	WHEELED_handler.hpid_iq.kp = (double)flash_data_buff[4]/100000000.0;
-	WHEELED_handler.hpid_iq.ki = (double)flash_data_buff[5]/100000000.0;
-	WHEELED_handler.hpid_omega.kp = (double)flash_data_buff[6]/100000000.0;
-	WHEELED_handler.hpid_omega.ki = (double)flash_data_buff[7]/100000000.0;
-	WHEELED_handler.rotor_offset = (double)(int32_t)flash_data_buff[8]/1000000.0;
+	if (flash_empty_detect){
+		for (uint32_t i = 0; i < 10; i++){
+			HAL_GPIO_TogglePin(LED_BUILTIN_GPIO_Port, LED_BUILTIN_Pin);
+			HAL_Delay(100);
+		}
+		set_default_motor_param();
+		HAL_Delay(1000);
+		flash_save_data();
+	}
 
-	STEERING_handler.max_current = (double)flash_data_buff[9]/1000000.0;
-	STEERING_handler.hpid_id.kp = (double)flash_data_buff[10]/100000000.0;
-	STEERING_handler.hpid_id.ki = (double)flash_data_buff[11]/100000000.0;
-	STEERING_handler.hpid_iq.kp = (double)flash_data_buff[12]/100000000.0;
-	STEERING_handler.hpid_iq.ki = (double)flash_data_buff[13]/100000000.0;
-	STEERING_handler.hpid_theta.kp = (double)flash_data_buff[14]/100000000.0;
-	STEERING_handler.hpid_theta.kd = (double)flash_data_buff[15]/100000000.0;
-	STEERING_handler.rotor_offset = (double)(int32_t)flash_data_buff[16]/1000000.0;
-	STEERING_handler.angle_offset = (double)(int32_t)flash_data_buff[17]/1000000.0;
-}
+	WHEELED_handler.max_current 	= *((float*)&flash_data_buff[1]);
+	WHEELED_handler.hpid_id.kp 		= *((float*)&flash_data_buff[2]);
+	WHEELED_handler.hpid_id.ki 		= *((float*)&flash_data_buff[3]);
+	WHEELED_handler.hpid_iq.kp 		= *((float*)&flash_data_buff[4]);
+	WHEELED_handler.hpid_iq.ki 		= *((float*)&flash_data_buff[5]);
+	WHEELED_handler.hpid_omega.kp 	= *((float*)&flash_data_buff[6]);
+	WHEELED_handler.hpid_omega.ki 	= *((float*)&flash_data_buff[7]);
+	WHEELED_handler.rotor_offset 	= *((float*)&flash_data_buff[8]);
 
-void set_default_motor_param (void)
-{
-	FLASH_read(0, flash_data_buff, 18, DATA_TYPE_32);
+	STEERING_handler.max_current 	= *((float*)&flash_data_buff[9]);
+	STEERING_handler.hpid_id.kp	 	= *((float*)&flash_data_buff[10]);
+	STEERING_handler.hpid_id.ki 	= *((float*)&flash_data_buff[11]);
+	STEERING_handler.hpid_iq.kp 	= *((float*)&flash_data_buff[12]);
+	STEERING_handler.hpid_iq.ki 	= *((float*)&flash_data_buff[13]);
+	STEERING_handler.hpid_theta.kp 	= *((float*)&flash_data_buff[14]);
+	STEERING_handler.hpid_theta.kd 	= *((float*)&flash_data_buff[15]);
+	STEERING_handler.rotor_offset 	= *((float*)&flash_data_buff[16]);
+	STEERING_handler.angle_offset 	= *((float*)&flash_data_buff[17]);
 
-	wheel_addr = (uint8_t)flash_data_buff[0];
-
-	WHEELED_handler.max_current = 5.0;
-	PID_set_konstanta(&WHEELED_handler.hpid_id, 0.02, 0.001, 0);
-	PID_set_konstanta(&WHEELED_handler.hpid_iq, 0.02, 0.002, 0);
-	PID_set_konstanta(&WHEELED_handler.hpid_omega, 0.002, 0.000002, 0);
-	WHEELED_handler.rotor_offset = 0.0;
-
-	STEERING_handler.max_current = 5.0;
-	PID_set_konstanta(&STEERING_handler.hpid_id, 0.02, 0.002, 0);
-	PID_set_konstanta(&STEERING_handler.hpid_iq, 0.02, 0.002, 0);
-	PID_set_konstanta(&STEERING_handler.hpid_theta, 1.0, 0, 0);
-	STEERING_handler.rotor_offset = 0.0;
-	STEERING_handler.angle_offset = 0.0;
+	wheel_addr = *((uint16_t*)&flash_data_buff[18]);
 }
 

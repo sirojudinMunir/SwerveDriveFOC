@@ -52,7 +52,8 @@ Drivers/LIB/Scr/SWERVE_DRIVE_BLDC.o: \
  ../Middlewares/Third_Party/FreeRTOS/Source/include/mpu_wrappers.h \
  ../Middlewares/Third_Party/FreeRTOS/Source/include/task.h \
  ../Middlewares/Third_Party/FreeRTOS/Source/include/list.h \
- ../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2/cmsis_os2.h
+ ../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2/cmsis_os2.h \
+ C:/Users/munir/git/SwerveDriveFOC/DUAL_BLDC_FOC/Drivers/LIB/Inc/MAGNETIC_SENSOR_AS5048A.h
 C:/Users/munir/git/SwerveDriveFOC/DUAL_BLDC_FOC/Drivers/LIB/Inc/SWERVE_DRIVE_BLDC.h:
 C:/Users/munir/git/SwerveDriveFOC/DUAL_BLDC_FOC/Drivers/LIB/Inc/SWERVE_DRIVE_FOC.h:
 ../Core/Inc/main.h:
@@ -107,3 +108,4 @@ C:/Users/munir/git/SwerveDriveFOC/DUAL_BLDC_FOC/Drivers/LIB/Inc/TASK_COMMAND.h:
 ../Middlewares/Third_Party/FreeRTOS/Source/include/task.h:
 ../Middlewares/Third_Party/FreeRTOS/Source/include/list.h:
 ../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2/cmsis_os2.h:
+C:/Users/munir/git/SwerveDriveFOC/DUAL_BLDC_FOC/Drivers/LIB/Inc/MAGNETIC_SENSOR_AS5048A.h:

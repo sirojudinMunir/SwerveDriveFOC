@@ -10,14 +10,14 @@
 #include "FLASH_lib.h"
 #include "PID_lib.h"
 #include "SWERVE_DRIVE_FOC.h"
+#include "SWERVE_DRIVE_BLDC.h"
 
-/*
- * extern from main.c
- */
 extern _Bool mag_zero_set_flag;
 extern uint32_t usb_tx_lenght;
 extern BLDC_HandleTypeDef WHEELED_handler, STEERING_handler;
 extern uint16_t wheel_addr;
+
+extern float angle_sens;
 
 extern uint8_t CDC_Transmit_FS(uint8_t* Buf, uint16_t Len);
 
@@ -30,9 +30,12 @@ const osThreadAttr_t command_task_attributes = {
 
 USB_settingTypedef usb_setting;
 
-uint8_t usb_tx_buff[1000];
+uint8_t usb_tx_buff[500];
 
-_Bool next_change_param = 0, flash_save_flag = 0, usb_msg_flag = 0;
+_Bool next_change_param = 0,
+		flash_save_flag = 0,
+		usb_msg_flag = 0,
+		help_message_flag = 0;
 double x_kp, x_ki, x_kd;
 uint32_t offset_index = 0;
 
@@ -67,6 +70,33 @@ CMD_listTypedef cmd_param_list[] = {
 
 uint32_t panjang[8];
 
+/*
+ * Steering Motor Info:
+- MAX Current: 8.000000A
+- Direct Current Control:
+	Kp: 0.005000
+	Ki: 0.001000
+- Quadrature Current Control:
+	Kp: 0.005000
+	Ki: 0.001000
+- Position Control:
+	Kp: 1.200000
+	Kd: 0.000000
+- Rotor Offset: 0.000000deg
+- Angle Offset: 0.000000deg
+Wheeled Motor Info:
+- MAX Current: 5.000000A
+- Direct Current Control:
+	Kp: 0.020000
+	Ki: 0.000100
+- Quadrature Current Control:
+	Kp: 0.020000
+	Ki: 0.000200
+- Speed Control:
+	Kp: 0.012000
+	Ki: 0.000001
+- Rotor Offset: 0.000000deg
+ */
 
 _Bool get_flash_save_flag (void){
 	return flash_save_flag;
@@ -244,87 +274,94 @@ void cmd_feedback_message (void){
 	uint32_t str_ln = 0;
 	if (usb_setting.mode == _info){
 		if (usb_setting.motor == _steering){
-			str_ln = get_param_info (&STEERING_handler, usb_tx_buff);
+			str_ln += get_param_info (&STEERING_handler, usb_tx_buff);
 		}
 		else if (usb_setting.motor == _wheeled){
-			str_ln = get_param_info (&WHEELED_handler, usb_tx_buff);
+			str_ln += get_param_info (&WHEELED_handler, usb_tx_buff);
+		}
+		else if (usb_setting.motor == _swerve){
+			str_ln += sprintf ((char*)usb_tx_buff, "Swerve Drive info:\n");
+			str_ln += sprintf ((char*)usb_tx_buff+str_ln, "*Device Address: %d [%04xh]\n", wheel_addr, wheel_addr);
+			str_ln += sprintf ((char*)usb_tx_buff+str_ln, "*Set-point Steering Angle: %f degree\n", steering_motor_get_angle_set_point());
+			str_ln += sprintf ((char*)usb_tx_buff+str_ln, "*Current Steering Angle: %f degree\n", angle_sens);
+			str_ln += sprintf ((char*)usb_tx_buff+str_ln, "*Set-point Wheeled Speed: %f RPM\n", wheeled_motor_get_speed_setpoint());
+			str_ln += sprintf ((char*)usb_tx_buff+str_ln, "*Current Wheeled Speed: %f RPM\n", WHEELED_handler.rpm);
 		}
 	}
 	else{
 		if (usb_setting.mode == _set) {
 			if (usb_setting.cmd != _cmd_none){
-				str_ln = sprintf ((char*)usb_tx_buff, "Successfully Entering New Parameters!\n");
+				str_ln += sprintf ((char*)usb_tx_buff, "Successfully Entering New Parameters!\n");
 			}
 		}
-		switch (usb_setting.cmd)
-		{
-		case _max_cur:
-			if (usb_setting.motor == _steering)
-			{
+
+		if (usb_setting.motor == _steering){
+			switch (usb_setting.cmd){
+			case _max_cur:
 				str_ln += sprintf ((char*)usb_tx_buff+str_ln, "Steering Motor MAX Current: %fA\n", STEERING_handler.max_current);
-			}
-			else
-			{
-				str_ln += sprintf ((char*)usb_tx_buff+str_ln, "Wheeled Motor MAX Current: %fA\n", WHEELED_handler.max_current);
-			}
-			break;
-		case _d_ctrl_pi:
-			if (usb_setting.motor == _steering)
-			{
+				break;
+			case _d_ctrl_pi:
 				str_ln += sprintf ((char*)usb_tx_buff+str_ln, "Steering Motor Direct Current Control:\n\tKp: %f\n\tKi: %f\n",
 						 STEERING_handler.hpid_id.kp, STEERING_handler.hpid_id.ki);
-			}
-			else
-			{
-				str_ln += sprintf ((char*)usb_tx_buff+str_ln, "Wheeled Motor Direct Current Control:\n\tKp: %f\n\tKi: %f\n",
-						 WHEELED_handler.hpid_id.kp, WHEELED_handler.hpid_id.ki);
-			}
-			break;
-		case _q_ctrl_pi:
-			if (usb_setting.motor == _steering)
-			{
+				break;
+			case _q_ctrl_pi:
 				str_ln += sprintf ((char*)usb_tx_buff+str_ln, "Steering Motor Quadrature Current Control:\n\tKp: %f\n\tKi: %f\n",
 						 STEERING_handler.hpid_iq.kp, STEERING_handler.hpid_iq.ki);
-			}
-			else
-			{
-				str_ln += sprintf ((char*)usb_tx_buff+str_ln, "Wheeled Motor Quadrature Current Control:\n\tKp: %f\n\tKi: %f\n",
-						 WHEELED_handler.hpid_iq.kp, WHEELED_handler.hpid_iq.ki);
-			}
-			break;
-		case _speed_ctrl_pi:
-			if (usb_setting.motor == _wheeled)
-			{
-				str_ln += sprintf ((char*)usb_tx_buff+str_ln, "Wheeled Motor Speed Control:\n\tKp: %f\n\tKi: %f\n",
-						 WHEELED_handler.hpid_omega.kp, WHEELED_handler.hpid_omega.ki);
-			}
-			break;
-		case _angle_ctrl_pd:
-			if (usb_setting.motor == _steering)
-			{
+				break;
+			case _angle_ctrl_pd:
 				str_ln += sprintf ((char*)usb_tx_buff+str_ln, "Steering Motor Position Control:\n\tKp: %f\n\tKd: %f\n",
 						 STEERING_handler.hpid_theta.kp, STEERING_handler.hpid_theta.kd);
-			}
-			break;
-		case _rotor_angle_offset:
-			if (usb_setting.motor == _steering)
-			{
+				break;
+			case _rotor_angle_offset:
 				str_ln += sprintf ((char*)usb_tx_buff+str_ln, "Steering Motor Rotor Offset: %fdeg\n", STEERING_handler.rotor_offset);
-			}
-			else
-			{
-				str_ln += sprintf ((char*)usb_tx_buff+str_ln, "Wheeled Motor Rotor Offset: %fdeg\n", WHEELED_handler.rotor_offset);
-			}
-			break;
-		case _steering_zero_offset:
-			if (usb_setting.motor == _steering)
-			{
+				break;
+			case _steering_zero_offset:
 				str_ln += sprintf ((char*)usb_tx_buff+str_ln, "Steering Motor Angle Offset: %fdeg\n", STEERING_handler.angle_offset);
+				break;
+			default:
+				break;
 			}
-			break;
-		default:
-			wrong_cmd_message ();
-			break;
+		}
+		if (usb_setting.motor == _wheeled){
+			switch (usb_setting.cmd){
+			case _max_cur:
+				str_ln += sprintf ((char*)usb_tx_buff+str_ln, "Wheeled Motor MAX Current: %fA\n", WHEELED_handler.max_current);
+				break;
+			case _d_ctrl_pi:
+				str_ln += sprintf ((char*)usb_tx_buff+str_ln, "Wheeled Motor Direct Current Control:\n\tKp: %f\n\tKi: %f\n",
+						 WHEELED_handler.hpid_id.kp, WHEELED_handler.hpid_id.ki);
+				break;
+			case _q_ctrl_pi:
+				str_ln += sprintf ((char*)usb_tx_buff+str_ln, "Wheeled Motor Quadrature Current Control:\n\tKp: %f\n\tKi: %f\n",
+						 WHEELED_handler.hpid_iq.kp, WHEELED_handler.hpid_iq.ki);
+				break;
+			case _speed_ctrl_pi:
+				str_ln += sprintf ((char*)usb_tx_buff+str_ln, "Wheeled Motor Speed Control:\n\tKp: %f\n\tKi: %f\n",
+						 WHEELED_handler.hpid_omega.kp, WHEELED_handler.hpid_omega.ki);
+				break;
+			case _rotor_angle_offset:
+				str_ln += sprintf ((char*)usb_tx_buff+str_ln, "Wheeled Motor Rotor Offset: %fdeg\n", WHEELED_handler.rotor_offset);
+				break;
+			default:
+				break;
+			}
+		}
+		if (usb_setting.motor == _swerve){
+			switch (usb_setting.cmd){
+			case _addr:
+				str_ln += sprintf ((char*)usb_tx_buff+str_ln, "Device Address: %d [%04xh]\n", wheel_addr, wheel_addr);
+				break;
+			case _steering_angle:
+				str_ln += sprintf ((char*)usb_tx_buff+str_ln, "Set-point Steering Angle: %f degree\n", steering_motor_get_angle_set_point());
+				str_ln += sprintf ((char*)usb_tx_buff+str_ln, "Current Steering Angle: %f degree\n", angle_sens);
+				break;
+			case _wheeled_speed:
+				str_ln += sprintf ((char*)usb_tx_buff+str_ln, "Set-point Wheeled Speed: %f RPM\n", wheeled_motor_get_speed_setpoint());
+				str_ln += sprintf ((char*)usb_tx_buff+str_ln, "Current Wheeled Speed: %f RPM\n", WHEELED_handler.rpm);
+				break;
+			default:
+				break;
+			}
 		}
 	}
 	CDC_Transmit_FS (usb_tx_buff, str_ln);
@@ -332,35 +369,70 @@ void cmd_feedback_message (void){
 
 void help_text (){
 	uint32_t str_ln = 0;
-	str_ln += sprintf ((char*)usb_tx_buff, "\nHELP.............................................................\n");
-	str_ln += sprintf ((char*)usb_tx_buff+str_ln, "<command> <mode> <param> <value>\n");
-	str_ln += sprintf ((char*)usb_tx_buff+str_ln, "command:\n");
-	str_ln += sprintf ((char*)usb_tx_buff+str_ln, "\t%s : steering motor\n", cmd_motor_list[_steering].cmd_str);
-	str_ln += sprintf ((char*)usb_tx_buff+str_ln, "\t%s : wheeled motor\n", cmd_motor_list[_wheeled].cmd_str);
-	str_ln += sprintf ((char*)usb_tx_buff+str_ln, "mode:\n");
-	str_ln += sprintf ((char*)usb_tx_buff+str_ln, "\t%s : input new parameter value(s)\n", cmd_mode_list[_set].cmd_str);
-	str_ln += sprintf ((char*)usb_tx_buff+str_ln, "\t%s : get parameter value(s)\n", cmd_mode_list[_get].cmd_str);
-	str_ln += sprintf ((char*)usb_tx_buff+str_ln, "\t%s : get all parameter values\n", cmd_mode_list[_info].cmd_str);
-	str_ln += sprintf ((char*)usb_tx_buff+str_ln, "param:\n");
-	str_ln += sprintf ((char*)usb_tx_buff+str_ln, "\t%s : limit current in Ampere\n", cmd_param_list[_max_cur].cmd_str);
-	str_ln += sprintf ((char*)usb_tx_buff+str_ln, "\t%s : Kp and Ki for direct current control\n", cmd_param_list[_d_ctrl_pi].cmd_str);
-	str_ln += sprintf ((char*)usb_tx_buff+str_ln, "\t%s : Kp and Ki for quadrature current control\n", cmd_param_list[_q_ctrl_pi].cmd_str);
-	str_ln += sprintf ((char*)usb_tx_buff+str_ln, "\t%s : Kp and Ki for wheled motor speed control\n", cmd_param_list[_speed_ctrl_pi].cmd_str);
-	str_ln += sprintf ((char*)usb_tx_buff+str_ln, "\t%s : Kp and Kd for steering motor position control\n", cmd_param_list[_angle_ctrl_pd].cmd_str);
-	str_ln += sprintf ((char*)usb_tx_buff+str_ln, "\t%s : offset rotor angle position in degree\n", cmd_param_list[_rotor_angle_offset].cmd_str);
-	str_ln += sprintf ((char*)usb_tx_buff+str_ln, "\t%s : offset position steering wheel in degree\n", cmd_param_list[_steering_zero_offset].cmd_str);
-	str_ln += sprintf ((char*)usb_tx_buff+str_ln, "value:\n");
-	str_ln += sprintf ((char*)usb_tx_buff+str_ln, "\tadd value(s) if mode is '%s'\n", cmd_mode_list[_set].cmd_str);
-	str_ln += sprintf ((char*)usb_tx_buff+str_ln, "\tyou must add '=' before add the value\n");
-	str_ln += sprintf ((char*)usb_tx_buff+str_ln, "\tin control parameter like (%s, %s, %s, %s), \n\tyou must add multiple values in a row\n",
-													cmd_param_list[_d_ctrl_pi].cmd_str,
-													cmd_param_list[_q_ctrl_pi].cmd_str,
-													cmd_param_list[_speed_ctrl_pi].cmd_str,
-													cmd_param_list[_angle_ctrl_pd].cmd_str);
-	str_ln += sprintf ((char*)usb_tx_buff+str_ln, "example:\n");
-	str_ln += sprintf ((char*)usb_tx_buff+str_ln, "WLD SET CLIM = 5.5\n");
-	str_ln += sprintf ((char*)usb_tx_buff+str_ln, "STR SET DCTR = 0.02 0.00234\n");
+#define usb_bf (char*)usb_tx_buff+str_ln
+	str_ln += sprintf (usb_bf, "\nHELP.............................................................\n");
+	str_ln += sprintf (usb_bf, "<command> <mode> <param> <value>\n");
+
+	str_ln += sprintf (usb_bf, "command:\n");
+	str_ln += sprintf (usb_bf, "\t%s : steering motor\n", cmd_motor_list[_steering].cmd_str);
+	str_ln += sprintf (usb_bf, "\t%s : wheeled motor\n", cmd_motor_list[_wheeled].cmd_str);
+	str_ln += sprintf (usb_bf, "\t%s : device settings\n", cmd_motor_list[_swerve].cmd_str);
+
+	str_ln += sprintf (usb_bf, "mode:\n");
+	str_ln += sprintf (usb_bf, "\t%s : input new parameter value(s)\n", cmd_mode_list[_set].cmd_str);
+	str_ln += sprintf (usb_bf, "\t%s : get parameter value(s)\n", cmd_mode_list[_get].cmd_str);
+	str_ln += sprintf (usb_bf, "\t%s : get all parameter values\n", cmd_mode_list[_info].cmd_str);
 	CDC_Transmit_FS (usb_tx_buff, str_ln);
+	osDelay(1);
+	str_ln = 0;
+
+	str_ln += sprintf (usb_bf, "param:\n");
+	str_ln += sprintf (usb_bf, "\t*%s parameters:\n", cmd_motor_list[_steering].cmd_str);
+	str_ln += sprintf (usb_bf, "\t%s : limit current in Ampere\n", cmd_param_list[_max_cur].cmd_str);
+	str_ln += sprintf (usb_bf, "\t%s : Kp and Ki for direct current control\n", cmd_param_list[_d_ctrl_pi].cmd_str);
+	str_ln += sprintf (usb_bf, "\t%s : Kp and Ki for quadrature current control\n", cmd_param_list[_q_ctrl_pi].cmd_str);
+	str_ln += sprintf (usb_bf, "\t%s : Kp and Kd for steering motor position control\n", cmd_param_list[_angle_ctrl_pd].cmd_str);
+	str_ln += sprintf (usb_bf, "\t%s : offset rotor angle position in degree\n", cmd_param_list[_rotor_angle_offset].cmd_str);
+	str_ln += sprintf (usb_bf, "\t%s : offset angle steering wheel in degree\n", cmd_param_list[_steering_zero_offset].cmd_str);
+	CDC_Transmit_FS (usb_tx_buff, str_ln);
+	osDelay(1);
+	str_ln = 0;
+
+	str_ln += sprintf (usb_bf, "\t*%s parameters:\n", cmd_motor_list[_wheeled].cmd_str);
+	str_ln += sprintf (usb_bf, "\t%s : limit current in Ampere\n", cmd_param_list[_max_cur].cmd_str);
+	str_ln += sprintf (usb_bf, "\t%s : Kp and Ki for direct current control\n", cmd_param_list[_d_ctrl_pi].cmd_str);
+	str_ln += sprintf (usb_bf, "\t%s : Kp and Ki for quadrature current control\n", cmd_param_list[_q_ctrl_pi].cmd_str);
+	str_ln += sprintf (usb_bf, "\t%s : Kp and Ki for wheeled motor speed control\n", cmd_param_list[_speed_ctrl_pi].cmd_str);
+	str_ln += sprintf (usb_bf, "\t%s : offset rotor angle position in degree\n", cmd_param_list[_rotor_angle_offset].cmd_str);
+	CDC_Transmit_FS (usb_tx_buff, str_ln);
+	osDelay(1);
+	str_ln = 0;
+
+	str_ln += sprintf (usb_bf, "\t*%s parameters:\n", cmd_motor_list[_swerve].cmd_str);
+	str_ln += sprintf (usb_bf, "\t%s : device address (input in decimal)\n", cmd_param_list[_addr].cmd_str);
+	str_ln += sprintf (usb_bf, "\t%s : steering angle\n", cmd_param_list[_steering_angle].cmd_str);
+	str_ln += sprintf (usb_bf, "\t%s : wheeled motor speed\n", cmd_param_list[_wheeled_speed].cmd_str);
+	CDC_Transmit_FS (usb_tx_buff, str_ln);
+	osDelay(1);
+	str_ln = 0;
+
+	str_ln += sprintf (usb_bf, "value:\n");
+	str_ln += sprintf (usb_bf, "\tadd value(s) if mode is '%s'\n", cmd_mode_list[_set].cmd_str);
+	str_ln += sprintf (usb_bf, "\tyou must add '=' before add the value\n");
+	str_ln += sprintf (usb_bf, "\tin control parameter like (%s, %s, %s, %s), \n\tyou must add multiple values in a row\n",
+								cmd_param_list[_d_ctrl_pi].cmd_str,
+								cmd_param_list[_q_ctrl_pi].cmd_str,
+								cmd_param_list[_speed_ctrl_pi].cmd_str,
+								cmd_param_list[_angle_ctrl_pd].cmd_str);
+	CDC_Transmit_FS (usb_tx_buff, str_ln);
+	osDelay(1);
+	str_ln = 0;
+
+	str_ln += sprintf (usb_bf, "example:\n");
+	str_ln += sprintf (usb_bf, "\tWLD SET CLIM = 5.5\n");
+	str_ln += sprintf (usb_bf, "\tSTR SET DCTR = 0.02 0.00234\n");
+	CDC_Transmit_FS (usb_tx_buff, str_ln);
+#undef usb_bf
 }
 
 uint32_t count_separator (char *str, char separator_char){
@@ -392,8 +464,6 @@ uint32_t count_float_number (char *str){
 	return count;
 }
 
-
-///WM SET DCTR = 0.03 0.00012
 int cmd_set (char *cmd)
 {
 	BLDC_cmdMotorTypedef motor = _cmd_none;
@@ -415,7 +485,7 @@ int cmd_set (char *cmd)
 		}
 	}
 
-	if (motor == _steering || motor == _wheeled)
+	if (motor == _steering || motor == _wheeled || motor == _swerve)
 	{
 		offset_index += find_separator (cmd+offset_index, ' ');
 		offset_index += count_separator (cmd+offset_index, ' ');
@@ -460,64 +530,85 @@ int cmd_set (char *cmd)
 
 					if (error_result == 0)
 					{
-						switch (cmd_temp)
-						{
-						case _max_cur:
-							if (motor == _steering) STEERING_handler.max_current = val[0];
-							else WHEELED_handler.max_current = val[0];
-							break;
-						case _d_ctrl_pi:
-							if (motor == _steering)
-							{
+						if (motor == _steering){
+							switch (cmd_temp){
+							case _max_cur:
+								STEERING_handler.max_current = val[0];
+								break;
+							case _d_ctrl_pi:
 								STEERING_handler.hpid_id.kp = val[0];
 								STEERING_handler.hpid_id.ki = val[1];
-							}
-							else
-							{
-								WHEELED_handler.hpid_id.kp = val[0];
-								WHEELED_handler.hpid_id.ki = val[1];
-							}
-							break;
-						case _q_ctrl_pi:
-							if (motor == _steering)
-							{
+								break;
+							case _q_ctrl_pi:
 								STEERING_handler.hpid_iq.kp = val[0];
 								STEERING_handler.hpid_iq.ki = val[1];
-							}
-							else
-							{
-								WHEELED_handler.hpid_iq.kp = val[0];
-								WHEELED_handler.hpid_iq.ki = val[1];
-							}
-							break;
-						case _speed_ctrl_pi:
-							if (motor == _wheeled)
-							{
-								WHEELED_handler.hpid_omega.kp = val[0];
-								WHEELED_handler.hpid_omega.ki = val[1];
-							}
-							else return -2;
-							break;
-						case _angle_ctrl_pd:
-							if (motor == _steering)
-							{
+								break;
+							case _angle_ctrl_pd:
 								STEERING_handler.hpid_theta.kp = val[0];
 								STEERING_handler.hpid_theta.kd = val[1];
+								break;
+							case _rotor_angle_offset:
+								STEERING_handler.rotor_offset = val[0];
+								break;
+							case _steering_zero_offset:
+								STEERING_handler.angle_offset = val[0];
+								break;
+							default:
+								wrong_cmd_message ();
+								return -2;
+								break;
 							}
-							else return -2;
-							break;
-						case _rotor_angle_offset:
-							if (motor == _steering) STEERING_handler.rotor_offset = val[0];
-							else WHEELED_handler.rotor_offset = val[0];
-							break;
-						case _steering_zero_offset:
-							if (motor == _steering) STEERING_handler.angle_offset = val[0];
-							else return -2;
-							break;
-						default:
-							break;
+						}
+						else if (motor == _wheeled){
+							switch (cmd_temp){
+							case _max_cur:
+								WHEELED_handler.max_current = val[0];
+								break;
+							case _d_ctrl_pi:
+								WHEELED_handler.hpid_id.kp = val[0];
+								WHEELED_handler.hpid_id.ki = val[1];
+								break;
+							case _q_ctrl_pi:
+								WHEELED_handler.hpid_iq.kp = val[0];
+								WHEELED_handler.hpid_iq.ki = val[1];
+								break;
+							case _speed_ctrl_pi:
+								WHEELED_handler.hpid_omega.kp = val[0];
+								WHEELED_handler.hpid_omega.ki = val[1];
+								break;
+							case _rotor_angle_offset:
+								WHEELED_handler.rotor_offset = val[0];
+								break;
+							default:
+								wrong_cmd_message ();
+								return -2;
+								break;
+							}
+						}
+						else if (motor == _swerve){
+							switch (cmd_temp){
+							case _addr:
+								wheel_addr = val[0];
+								break;
+							case _steering_angle:
+								steering_motor_set_angle (val[0]);
+								break;
+							case _wheeled_speed:
+								wheeled_motor_set_speed (val[0]);
+								break;
+							default:
+								wrong_cmd_message ();
+								return -2;
+								break;
+							}
 						}
 					}
+					else{
+						wrong_cmd_message ();
+						return -1;
+					}
+					if (cmd_temp != _steering_angle && cmd_temp != _wheeled_speed)
+						set_flash_save_flag (1);
 				}
 			}
 			else {
@@ -531,17 +622,12 @@ int cmd_set (char *cmd)
 		}
 	}
 	else if (motor == _help){
-		help_text ();
+		help_message_flag = 1;
+		return 0;
 	}
 	else {
 		wrong_cmd_message ();
 		return -1;
-	}
-
-	if (mode == _set) {
-		if (cmd_temp != _cmd_none){
-			set_flash_save_flag (1);
-		}
 	}
 
 	usb_setting.motor = motor;
@@ -569,6 +655,10 @@ void start_command_task(void *argument)
 		}
 		if (get_usb_msg_flag ()){
 		  set_usb_msg_flag (0);
+		}
+		if (help_message_flag){
+			help_message_flag = 0;
+			help_text ();
 		}
 		osDelay(1);
 	}

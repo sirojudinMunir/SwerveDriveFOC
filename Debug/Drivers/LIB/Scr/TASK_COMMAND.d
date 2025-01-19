@@ -53,7 +53,9 @@ Drivers/LIB/Scr/TASK_COMMAND.o: ../Drivers/LIB/Scr/TASK_COMMAND.c \
  C:/Users/munir/git/SwerveDriveFOC/DUAL_BLDC_FOC/Drivers/LIB/Inc/PID_lib.h \
  C:/Users/munir/git/SwerveDriveFOC/DUAL_BLDC_FOC/Drivers/LIB/Inc/SWERVE_DRIVE_FOC.h \
  C:/Users/munir/git/SwerveDriveFOC/DUAL_BLDC_FOC/Drivers/LIB/Inc/PID_lib.h \
- C:/Users/munir/git/SwerveDriveFOC/DUAL_BLDC_FOC/Drivers/LIB/Inc/DLPF_lib.h
+ C:/Users/munir/git/SwerveDriveFOC/DUAL_BLDC_FOC/Drivers/LIB/Inc/DLPF_lib.h \
+ C:/Users/munir/git/SwerveDriveFOC/DUAL_BLDC_FOC/Drivers/LIB/Inc/SWERVE_DRIVE_BLDC.h \
+ C:/Users/munir/git/SwerveDriveFOC/DUAL_BLDC_FOC/Drivers/LIB/Inc/SWERVE_DRIVE_FOC.h
 C:/Users/munir/git/SwerveDriveFOC/DUAL_BLDC_FOC/Drivers/LIB/Inc/TASK_COMMAND.h:
 ../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2/cmsis_os.h:
 ../Middlewares/Third_Party/FreeRTOS/Source/include/FreeRTOS.h:
@@ -110,3 +112,5 @@ C:/Users/munir/git/SwerveDriveFOC/DUAL_BLDC_FOC/Drivers/LIB/Inc/PID_lib.h:
 C:/Users/munir/git/SwerveDriveFOC/DUAL_BLDC_FOC/Drivers/LIB/Inc/SWERVE_DRIVE_FOC.h:
 C:/Users/munir/git/SwerveDriveFOC/DUAL_BLDC_FOC/Drivers/LIB/Inc/PID_lib.h:
 C:/Users/munir/git/SwerveDriveFOC/DUAL_BLDC_FOC/Drivers/LIB/Inc/DLPF_lib.h:
+C:/Users/munir/git/SwerveDriveFOC/DUAL_BLDC_FOC/Drivers/LIB/Inc/SWERVE_DRIVE_BLDC.h:
+C:/Users/munir/git/SwerveDriveFOC/DUAL_BLDC_FOC/Drivers/LIB/Inc/SWERVE_DRIVE_FOC.h:

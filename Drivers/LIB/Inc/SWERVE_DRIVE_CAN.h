@@ -27,7 +27,7 @@ extern CAN_TxHeaderTypeDef   	TxHeader;
 extern uint8_t can_rx_buff[8], can_tx_buff[8], led_can_respone;
 extern uint16_t wheel_addr;
 extern int16_t hall_sens_count;
-extern double angle_sens, zero_offset;
+extern float angle_sens, zero_offset;
 extern float data_angle, data_rpm;
 
 void CAN_filter_config (void);

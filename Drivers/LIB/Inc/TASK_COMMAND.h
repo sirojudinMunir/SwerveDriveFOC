@@ -11,7 +11,7 @@
 #include "stdio.h"
 #include "cmsis_os.h"
 
-#define MAX_LIST_CMD_PARAM 	8
+#define MAX_LIST_CMD_PARAM 	11
 #define MAX_LIST_CMD_MODE 	3
 #define MAX_LIST_CMD_MOTOR 	4
 
@@ -64,6 +64,6 @@ void start_command_task(void *argument);
 extern osThreadId_t command_task_handle;
 extern const osThreadAttr_t command_task_attributes;
 
-extern uint8_t usb_tx_buff[1000];
+extern uint8_t usb_tx_buff[500];
 
 #endif /* LIB_INC_COMMAND_H_ */

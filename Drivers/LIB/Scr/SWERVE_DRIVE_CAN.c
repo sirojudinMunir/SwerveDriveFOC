@@ -6,9 +6,11 @@
  */
 
 #include "SWERVE_DRIVE_CAN.h"
+#include "SWERVE_DRIVE_FOC.h"
 #include "math.h"
 
 extern CAN_HandleTypeDef hcan1;
+extern BLDC_HandleTypeDef WHEELED_handler, STEERING_handler;
 
 CAN_TxHeaderTypeDef   	TxHeader;
 CAN_RxHeaderTypeDef   	RxHeader;
@@ -98,7 +100,7 @@ void CAN_get_zero_offset (void)
 	int16_t offset_temp;
 
 	offset_temp = (int16_t)(can_rx_buff[1] | can_rx_buff[2]<<8);
-	zero_offset = (float)offset_temp;
+	STEERING_handler.angle_offset = (float)offset_temp;
 }
 
 /*
